@@ -10,3 +10,14 @@ the above command will remove all the images, voulumes, containers and networks 
 <img width="1728" alt="image" src="https://github.com/user-attachments/assets/90ff2a69-74e3-4ab6-b1e7-43e60f745504">
 
 <img width="1145" alt="image" src="https://github.com/user-attachments/assets/b3b6280f-90fd-498c-b6fc-f09b60c11e52">
+
+SQL COMMANDS
+
+mysql -u root -p 
+pass the password as root 
+
+SELECT user, host FROM mysql.user;
+SHOW DATABASES;
+USE curd;
+SHOW TABLES;
+DESCRIBE users;
