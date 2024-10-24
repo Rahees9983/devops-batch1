@@ -1,0 +1,65 @@
+## If you have deployed application inside a docker container and your VM have a public IP
+
+$ docker run -d --name metric-app -p 5000:5000 rahees9983/python-log-metrics-app-grafan:v1
+
+$ docker exec -it metric-app bash ## Command to exec into the container if you want
+
+# Below commands can be executed from anywhere as this Ip is public
+# Even you can you POSTMAN as well which is available as Google Chrome extension, and I have already used it for the same application
+
+curl -X POST http://18.217.114.153:5000/count_unique_strings \
+  -H "Content-Type: application/json" \
+  -d '{"strings": ["apple", "banana", "apple", "cherry"]}'
+
+curl -X POST http://18.217.114.153:5000/start_logging \
+  -H "Content-Type: application/json" \
+  -d '{"config_file": "env-config.json", "interval": 60}'
+
+curl -X POST http://18.217.114.153:5000/stop_logging
+
+curl http://18.217.114.153:5000/logging_status
+
+curl -X POST http://18.217.114.153:5000/cars
+
+curl -X POST http://18.217.114.153:5000/boats
+
+curl http://18.217.114.153:5000/cars
+
+curl http://18.217.114.153:5000/boats
+
+curl http://18.217.114.153:5000/metrics
+
+If you want to use a for loop after exec into pod or container
+
+for i in {1..7}; do curl -X POST http://localhost:5000/boats && echo ""; done
+for i in {1..10}; do curl -X POST http://localhost:5000/cars && echo ""; done
+for i in {1..15}; do curl http://localhost:5000/cars && echo ""; done
+for i in {1..9}; do curl http://localhost:5000/boats && echo ""; done
+
+########## If you have deployed the application inside k8s
+kubectl exec -it python-app -- bash
+
+apt update && apt install -y iputils-ping curl net-tools vim procps
+
+curl -X POST http://localhost:5000/cars
+
+curl -X POST http://localhost:5000/boats
+
+curl http://localhost:5000/cars
+
+curl http://localhost:5000/boats
+
+curl http://localhost:5000/metrics  # to get all the metrics of the application, by default all the metrics are exposing metrics on this path 
+
+curl -X POST http://localhost:5000/count_unique_strings \
+  -H "Content-Type: application/json" \
+  -d '{"strings": ["apple", "banana", "apple", "cherry"]}'
+
+curl -X POST http://localhost:5000/logging_status
+
+curl -X POST http://localhost:5000/start_logging \
+  -H "Content-Type: application/json" \
+  -d '{"config_file": "env-config.json", "interval": 60}'
+
+curl -X POST http://localhost:5000/stop_logging
+##########

@@ -1,0 +1,10 @@
+{
+    "sites": [
+        { "url": "http://www.google.com", "content": "Google Search", "env": "dev" },
+        { "url": "http://www.invalid.com/login", "content": "Please login:", "env": "test" },
+        { "url": "http://www.example.com", "content": "Example Domain", "env": "prod" },
+        { "url": "http://www.github.com", "content": "GitHub", "env": "staging" },
+        { "url": "http://www.python.org", "content": "Python", "env": "dev" },
+        { "url": "http://www.stackoverflow.com", "content": "Stack Overflow", "env": "test" }
+    ]
+}
