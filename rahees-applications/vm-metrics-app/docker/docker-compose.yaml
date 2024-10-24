@@ -1,0 +1,22 @@
+version: '3.8'
+services:
+  vm_metrics_app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: vm-metrics-app   # Custom image name for VM Metric collection
+    ports:
+      - "5000:5000"
+    networks:
+      - my_network
+
+  haproxy-nginx:
+    image: rahees9983/haproxy-nginx-fix:v1
+    ports:
+      - "80:80"  # Expose port 80 for HAProxy
+    networks:
+      - my_network
+
+networks:
+  my_network:
+    driver: bridge

@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Alam's System Metrics</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f0f0f5;
+            color: #333;
+            margin: 0;
+            padding: 20px;
+            transition: background-color 0.3s;
+        }
+        header {
+            background-color: #007bff;
+            color: white;
+            padding: 10px 20px;
+            text-align: center;
+            transition: background-color 0.3s;
+        }
+        h1 {
+            margin: 0;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+            transition: transform 0.2s;
+        }
+        th, td {
+            padding: 12px;
+            border: 1px solid #ddd;
+            text-align: left;
+        }
+        th {
+            background-color: #007bff;
+            color: white;
+        }
+        tr {
+            transition: background-color 0.3s;
+        }
+        tr:hover {
+            background-color: #f1f1f1;
+        }
+        h2 {
+            color: #007bff;
+        }
+        .back-link {
+            margin-top: 20px;
+            display: block;
+            text-align: center;
+            color: #007bff;
+            text-decoration: none;
+            transition: color 0.3s;
+        }
+        .back-link:hover {
+            text-decoration: underline;
+            color: #0056b3;
+        }
+    </style>
+</head>
+<body>
+
+<header>
+    <h1>Alam's System Metrics Dashboard</h1>
+</header>
+
+<h2>CPU Metrics</h2>
+<table>
+    <tr>
+        <th>Metric</th>
+        <th>Value</th>
+    </tr>
+    <tr>
+        <td>CPU Usage</td>
+        <td>{{ metrics.cpu.percent }}</td>
+    </tr>
+    <tr>
+        <td>CPU Count</td>
+        <td>{{ metrics.cpu.count }}</td>
+    </tr>
+</table>
+
+<h2>Memory Metrics</h2>
+<table>
+    <tr>
+        <th>Metric</th>
+        <th>Value</th>
+    </tr>
+    <tr>
+        <td>Total Memory</td>
+        <td>{{ metrics.memory.total_MB }} MB</td>
+    </tr>
+    <tr>
+        <td>Used Memory</td>
+        <td>{{ metrics.memory.used_MB }} MB</td>
+    </tr>
+    <tr>
+        <td>Free Memory</td>
+        <td>{{ metrics.memory.free_MB }} MB</td>
+    </tr>
+</table>
+
+<h2>Disk Metrics</h2>
+<table>
+    <tr>
+        <th>Metric</th>
+        <th>Value</th>
+    </tr>
+    <tr>
+        <td>Total Disk Space</td>
+        <td>{{ metrics.disk.total_MB }} MB</td>
+    </tr>
+    <tr>
+        <td>Used Disk Space</td>
+        <td>{{ metrics.disk.used_MB }} MB</td>
+    </tr>
+    <tr>
+        <td>Free Disk Space</td>
+        <td>{{ metrics.disk.free_MB }} MB</td>
+    </tr>
+</table>
+
+<h2>Network Metrics</h2>
+<table>
+    <tr>
+        <th>Metric</th>
+        <th>Value</th>
+    </tr>
+    <tr>
+        <td>Bytes Sent</td>
+        <td>{{ metrics.network.system_wide.bytes_sent_MB }} MB</td>
+    </tr>
+    <tr>
+        <td>Bytes Received</td>
+        <td>{{ metrics.network.system_wide.bytes_recv_MB }} MB</td>
+    </tr>
+    <tr>
+        <td>Packets Sent</td>
+        <td>{{ metrics.network.system_wide.packets_sent }}</td>
+    </tr>
+    <tr>
+        <td>Packets Received</td>
+        <td>{{ metrics.network.system_wide.packets_recv }}</td>
+    </tr>
+</table>
+
+<a href="/metrics/cpu" class="back-link">View Detailed CPU Metrics</a>
+<a href="/metrics/memory" class="back-link">View Detailed Memory Metrics</a>
+<a href="/metrics/disk" class="back-link">View Detailed Disk Metrics</a>
+<a href="/metrics/network" class="back-link">View Detailed Network Metrics</a>
+
+</body>
+</html>
+

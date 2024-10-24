@@ -1,0 +1,35 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vm-metrics-app
+  labels:
+    app: vm-metrics-app
+spec:
+  replicas: 1  # You can adjust the number of replicas as needed
+  selector:
+    matchLabels:
+      app: vm-metrics-app
+  template:
+    metadata:
+      labels:
+        app: vm-metrics-app
+    spec:
+      containers:
+      - name: vm-metrics-app
+        image: rahees9983/vm-metrics-app:with-gui
+        ports:
+        - containerPort: 5000
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vm-metrics-app-service
+spec:
+  type: NodePort  # Use LoadBalancer for cloud providers or ClusterIP for internal access
+  ports:
+  - port: 5000
+    targetPort: 5000
+    protocol: TCP
+    nodePort: 30002  # Optional: Specify a port if you want to use NodePort
+  selector:
+    app: vm-metrics-app

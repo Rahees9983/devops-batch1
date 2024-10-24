@@ -1,0 +1,5 @@
+Flask==1.1.4
+flask_restplus==0.13.0
+pymongo==4.10.1
+Werkzeug==0.16.1
+markupsafe==2.0.1

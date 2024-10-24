@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Disk Metrics</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f4;
+            color: #333;
+            margin: 0;
+            padding: 20px;
+        }
+        h1 {
+            color: #4CAF50;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+        }
+        th, td {
+            padding: 12px;
+            border: 1px solid #ddd;
+            text-align: left;
+        }
+        th {
+            background-color: #4CAF50;
+            color: white;
+        }
+    </style>
+</head>
+<body>
+
+<h1>Disk Metrics</h1>
+<table>
+    <tr>
+        <th>Total (MB)</th>
+        <th>Used (MB)</th>
+        <th>Free (MB)</th>
+    </tr>
+    <tr>
+        <td>{{ disk.total_MB }}</td>
+        <td>{{ disk.used_MB }}</td>
+        <td>{{ disk.free_MB }}</td>
+    </tr>
+</table>
+
+<a href="/metrics">Back to All Metrics</a>
+
+</body>
+</html>
+

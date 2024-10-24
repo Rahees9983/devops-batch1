@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Network Metrics</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f4;
+            color: #333;
+            margin: 0;
+            padding: 20px;
+        }
+        h1 {
+            color: #4CAF50;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+        }
+        th, td {
+            padding: 12px;
+            border: 1px solid #ddd;
+            text-align: left;
+        }
+        th {
+            background-color: #4CAF50;
+            color: white;
+        }
+    </style>
+</head>
+<body>
+
+<h1>Network Metrics</h1>
+<h3>System-Wide</h3>
+<table>
+    <tr>
+        <th>Bytes Sent (MB)</th>
+        <th>Bytes Received (MB)</th>
+        <th>Packets Sent</th>
+        <th>Packets Received</th>
+    </tr>
+    <tr>
+        <td>{{ network.system_wide.bytes_sent_MB }}</td>
+        <td>{{ network.system_wide.bytes_recv_MB }}</td>
+        <td>{{ network.system_wide.packets_sent }}</td>
+        <td>{{ network.system_wide.packets_recv }}</td>
+    </tr>
+</table>
+
+<h3>Per-Interface</h3>
+<table>
+    <tr>
+        <th>Interface</th>
+        <th>Bytes Sent (MB)</th>
+        <th>Bytes Received (MB)</th>
+        <th>Packets Sent</th>
+        <th>Packets Received</th>
+    </tr>
+    {% for interface, stats in network.per_interface.items() %}
+    <tr>
+        <td>{{ interface }}</td>
+        <td>{{ stats.bytes_sent_MB }}</td>
+        <td>{{ stats.bytes_recv_MB }}</td>
+        <td>{{ stats.packets_sent }}</td>
+        <td>{{ stats.packets_recv }}</td>
+    </tr>
+    {% endfor %}
+</table>
+
+<a href="/metrics">Back to All Metrics</a>
+
+</body>
+</html>
+
