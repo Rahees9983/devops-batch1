@@ -1,0 +1,6 @@
+{{- if .Values.service.enabled -}}
+** Note: **
+You can access the service using the following URL:
+http://<NodeIP>:{{ .Values.service.nodePort }}
+{{- end -}}
+
