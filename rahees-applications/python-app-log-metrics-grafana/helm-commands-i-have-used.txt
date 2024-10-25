@@ -13,3 +13,17 @@ $ helm status grafana-python-metric-logs
 $ helm history  grafana-python-metric-logs
 $ helm upgrade grafana-python-metric-logs ./helm-chart-4-python-metric-log-grafana/ --values values.yaml 
 $ helm test grafana-python-metric-logs
+ubuntu@master:~/rahees/devops-batch1/rahees-applications/python-app-log-metrics-grafana/helm-chart-4-python-metric-log-grafana/templates/tests$ helm test grafana-python-metric-logs
+NAME: grafana-python-metric-logs
+LAST DEPLOYED: Fri Oct 25 05:27:37 2024
+NAMESPACE: default
+STATUS: deployed
+REVISION: 2
+TEST SUITE:     grafana-python-metric-logs-test-connection
+Last Started:   Fri Oct 25 05:28:27 2024
+Last Completed: Fri Oct 25 05:28:32 2024
+Phase:          Succeeded
+NOTES:
+** Note: **
+You can access the service using the following URL:
+http://<NodeIP>:30009
