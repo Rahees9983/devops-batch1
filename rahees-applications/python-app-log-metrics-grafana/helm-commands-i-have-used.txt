@@ -1,0 +1,15 @@
+$ helm install grafana-python-metric-logs ./helm-chart-4-python-metric-log-grafana/
+$ helm list
+$ helm ls
+$ helm show chart ./helm-chart-4-python-metric-log-grafana/
+$ helm show chart ./metrics-logs-python-app-0.1.0.tgz
+$ helm show all ./helm-chart-4-python-metric-log-grafana/ (using helm chart folder)
+$ helm show all ./metrics-logs-python-app-0.1.0.tgz (using helm chart .tgz file)
+$ helm status my-release
+$ helm status grafana-python-metric-logs 
+$ helm template ./helm-chart-4-python-metric-log-grafana/ --values ./helm-chart-4-python-metric-log-grafana/values.yaml > all-file.yaml
+$ helm show values ./helm-chart-4-python-metric-log-grafana/
+$ helm status grafana-python-metric-logs
+$ helm history  grafana-python-metric-logs
+$ helm upgrade grafana-python-metric-logs ./helm-chart-4-python-metric-log-grafana/ --values values.yaml 
+$ helm test grafana-python-metric-logs
