@@ -1,0 +1,54 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: file-content-config
+data:
+  testfile.txt: |
+    This is the content of the initialization file.
+    I have used this file to show Below two points 
+    1. InitContainers
+    2. How to use a config map inside a pod/deployment
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: flask-upload-file
+  labels:
+    app: flask-upload-file
+spec:
+  replicas: 1 
+  selector:
+    matchLabels:
+      app: flask-upload-file
+  template:
+    metadata:
+      labels:
+        app: flask-upload-file
+    spec:
+      containers:
+      - name: flask-upload-file
+        image: rahees9983/flask-upload-file:v4-with-k8s-probes
+        ports:
+        - containerPort: 8080
+        volumeMounts:
+        - name: config-volume
+          mountPath: /data  
+      volumes:
+      - name: config-volume
+        configMap:
+          name: file-content-config 
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: flask-upload-file-service
+spec:
+  type: NodePort 
+  ports:
+  - port: 8080
+    targetPort: 8080
+    protocol: TCP
+    nodePort: 30080 
+  selector:
+    app: flask-upload-file
