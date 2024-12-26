@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: location-config
+data:
+  LATITUDE: "58.7984"
+  LONGITUDE: "17.8081"
