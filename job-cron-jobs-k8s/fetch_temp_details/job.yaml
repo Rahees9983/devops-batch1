@@ -1,0 +1,18 @@
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: stormglass-wind-speed-job
+spec:
+  template:
+    spec:
+      containers:
+        - name: stormglass-app
+          image: rahees9983/fetch_temp_public_api_k8s_jobs:v1
+          envFrom:
+            - secretRef:
+                name: stormglass-api-key
+            - configMapRef:
+                name: location-config
+          # Set the restartPolicy to "OnFailure" to ensure the job retries in case of failure
+      restartPolicy: OnFailure
