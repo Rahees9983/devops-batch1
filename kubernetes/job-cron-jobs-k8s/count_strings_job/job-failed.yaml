@@ -1,0 +1,19 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: api-string-count-job
+spec:
+  completions: 1  # The job needs to complete once
+  parallelism: 5  # Only 1 pod will run at a time
+  template:
+    spec:
+      containers:
+      - name: api-string-count-container
+        image: rahees9983/count_str_from_public_api_k8s_jobs:v1  
+        #python3 find_string_from_public_api.py https://jsonplaceholder.typicode.com/posts body consequatur
+        args:                                                       
+          - "https://jsonplaceholder.typicode.com/posts"  # API URL
+          - "title"  # Field to search in (e.g., "title" or "body")
+          - "sunt"  # String to search for
+      restartPolicy: Never  # Don't restart the pod after completion
+  backoffLimit: 4  # Retry limit for job failure

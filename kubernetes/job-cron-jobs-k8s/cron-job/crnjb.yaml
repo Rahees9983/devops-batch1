@@ -1,0 +1,19 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: stormglass-wind-speed-cronjob
+spec:
+  schedule: "*/5 * * * *"  # Runs after every 5 minutes
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: stormglass-app
+              image: rahees9983/fetch_temp_public_api_k8s_jobs:v1
+              envFrom:
+                - secretRef:
+                    name: stormglass-api-key
+                - configMapRef:
+                    name: location-config
+          restartPolicy: OnFailure
