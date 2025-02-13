@@ -1,7 +1,6 @@
 FROM python:3.9-slim
 WORKDIR /app
-COPY requirements.txt .
+COPY ./ .
 RUN pip install -r requirements.txt
-COPY controller.py .
-CMD ["python", "controller.py"]
+CMD ["python", "game_controller_4_operator.py"]
 

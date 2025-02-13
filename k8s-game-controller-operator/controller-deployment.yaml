@@ -15,5 +15,5 @@ spec:
       serviceAccountName: game-controller
       containers:
       - name: controller
-        image: your-registry/game-controller:latest
+        image: rahees9983/operator-4-a-game-k8s:v1
 
