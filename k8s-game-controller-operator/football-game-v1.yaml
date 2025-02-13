@@ -1,0 +1,8 @@
+apiVersion: mygames.com/v1
+kind: Game
+metadata:
+  name: football-game-v1
+spec:
+  players: 22
+  status: started
+

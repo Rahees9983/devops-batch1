@@ -1,0 +1,66 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: games.mygames.com
+spec:
+  group: mygames.com
+  names:
+    kind: Game
+    plural: games
+    singular: game
+    shortNames:
+      - gm
+  scope: Namespaced
+  versions:
+    - name: v1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              properties:
+                players:
+                  type: integer
+                  minimum: 2  # Enforce minimum number of players
+                  description: "Number of players"
+                status:
+                  type: string
+                  enum:
+                    - "started"
+                    - "paused"
+                    - "ended"
+                  description: "Current status of the game"
+    - name: v2
+      served: true
+      storage: false  # This version is not the storage version, only served
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              properties:
+                players:
+                  type: integer
+                  minimum: 2
+                  maximum: 100  # Adding a maximum limit of players
+                  description: "Number of players"
+                status:
+                  type: string
+                  enum:
+                    - "started"
+                    - "paused"
+                    - "ended"
+                    - "waiting"
+                  description: "Current status of the game"
+                gameType:
+                  type: string
+                  enum:
+                    - "football"
+                    - "basketball"
+                    - "chess"
+                  description: "Type of game"
+
