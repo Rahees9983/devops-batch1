@@ -2,8 +2,7 @@
 
 ## What is Canary Deployment?
 
-Canary deployment is a progressive rollout strategy where you gradually shift traffic from an old version to a new version. It's named after the "canary in a coal mine" - you send a small amount of traffic to test the waters before fully committing.
-
+Canary deployment is a progressive rollout strategy where you gradually shift traffic from an old version to a new version.
 ## How It Works
 
 ```
