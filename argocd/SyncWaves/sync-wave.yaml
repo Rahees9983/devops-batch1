@@ -1,0 +1,24 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: db-migrate
+  annotations:
+    argocd.argoproj.io/hook: PreSync
+    argocd.argoproj.io/hook-delete-policy: HookSucceeded
+    argocd.argoproj.io/sync-wave: "-1"
+spec:
+  template:
+    spec:
+      containers:
+      - name: postgresql-client
+        # Using alpine for a lightweight shell environment
+        image: alpine:latest
+        # The command executes the echo first, then sleeps for 30 seconds
+        command: ["/bin/sh", "-c"]
+        args:
+          - |
+            echo "db migrated successfully"
+            sleep 30
+      restartPolicy: Never
+  # backoffLimit: 0 ensures the job doesn't retry if it fails once
+  backoffLimit: 0 

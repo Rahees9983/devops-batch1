@@ -1,0 +1,238 @@
+# PreSync Hook - Runs BEFORE sync
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: vm-metrics-app-presync
+  annotations:
+    argocd.argoproj.io/hook: PreSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  template:
+    spec:
+      containers:
+      - name: presync
+        image: busybox
+        command: 
+        - sh
+        - -c
+        - |
+          echo "============================================"
+          echo "       PRESYNC HOOK                        "
+          echo "============================================"
+          echo "Time: $(date)"
+          echo ""
+          echo "Step 1: Creating database backup..."
+          sleep 10
+          echo "Step 2: Running migrations..."
+          sleep 10
+          echo ""
+          echo "PreSync completed!"
+          echo "============================================"
+      restartPolicy: Never
+  backoffLimit: 0
+---
+# Sync Hook - Runs DURING sync (with other resources)
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: vm-metrics-app-sync
+  annotations:
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  template:
+    spec:
+      containers:
+      - name: sync
+        image: busybox
+        command: 
+        - sh
+        - -c
+        - |
+          echo "============================================"
+          echo "       SYNC HOOK                           "
+          echo "============================================"
+          echo "Time: $(date)"
+          echo ""
+          echo "Step 1: Initializing application data..."
+          sleep 10
+          echo "Step 2: Seeding database..."
+          sleep 10
+          echo ""
+          echo "Sync hook completed!"
+          echo "============================================"
+      restartPolicy: Never
+  backoffLimit: 0
+---
+# Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: vm-metrics-app-service
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  type: NodePort
+  ports:
+  - port: 5000
+    targetPort: 5000
+    protocol: TCP
+    nodePort: 30002
+  selector:
+    app: vm-metrics-app
+---
+# Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vm-metrics-app
+  labels:
+    app: vm-metrics-app
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: vm-metrics-app
+  template:
+    metadata:
+      labels:
+        app: vm-metrics-app
+    spec:
+      containers:
+      - name: vm-metrics-app
+        image: rahees9983/vm-metrics-app:with-gui
+        ports:
+        - containerPort: 5000
+---
+# PostSync Hook - Runs AFTER sync succeeds
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: vm-metrics-app-postsync
+  annotations:
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+    argocd.argoproj.io/sync-wave: "4"
+spec:
+  template:
+    spec:
+      containers:
+      - name: postsync
+        image: busybox
+        command:
+        - sh
+        - -c
+        - |
+          echo "============================================"
+          echo "       POSTSYNC HOOK                       "
+          echo "============================================"
+          echo "Time: $(date)"
+          echo ""
+          echo "Step 1: Running smoke tests..."
+          sleep 10
+          echo "Step 2: Sending Slack notification..."
+          sleep 10
+          echo ""
+          echo "PostSync completed!"
+          echo "============================================"
+      restartPolicy: Never
+  backoffLimit: 0
+---
+# Skip Hook - Runs when sync is SKIPPED
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: vm-metrics-app-skip
+  annotations:
+    argocd.argoproj.io/hook: Skip
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+spec:
+  template:
+    spec:
+      containers:
+      - name: skip
+        image: busybox
+        command:
+        - sh
+        - -c
+        - |
+          echo "============================================"
+          echo "       SKIP HOOK                           "
+          echo "============================================"
+          echo "Time: $(date)"
+          echo "Sync was skipped - logging event..."
+          echo "============================================"
+      restartPolicy: Never
+  backoffLimit: 0
+---
+# SyncFail Hook - Runs when sync FAILS
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: vm-metrics-app-syncfail
+  annotations:
+    argocd.argoproj.io/hook: SyncFail
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+spec:
+  template:
+    spec:
+      containers:
+      - name: syncfail
+        image: busybox
+        command:
+        - sh
+        - -c
+        - |
+          echo "============================================"
+          echo "       SYNCFAIL HOOK                       "
+          echo "============================================"
+          echo "Time: $(date)"
+          echo ""
+          echo "Step 1: Capturing error logs..."
+          sleep 10
+          echo "Step 2: Sending PagerDuty alert..."
+          sleep 10
+          echo ""
+          echo "SyncFail completed!"
+          echo "============================================"
+      restartPolicy: Never
+  backoffLimit: 0
+---
+# PostDelete Hook - Runs AFTER app is DELETED
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: vm-metrics-app-postdelete
+  annotations:
+    argocd.argoproj.io/hook: PostDelete
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+spec:
+  template:
+    spec:
+      containers:
+      - name: postdelete
+        image: busybox
+        command:
+        - sh
+        - -c
+        - |
+          echo "============================================"
+          echo "       POSTDELETE HOOK                     "
+          echo "============================================"
+          echo "Time: $(date)"
+          echo ""
+          echo "Step 1: Cleaning up database..."
+          sleep 10
+          echo "Step 2: Removing cloud resources..."
+          sleep 10
+          echo "Step 3: Archiving logs..."
+          sleep 10
+          echo ""
+          echo "PostDelete cleanup completed!"
+          echo "============================================"
+      restartPolicy: Never
+  backoffLimit: 0

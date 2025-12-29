@@ -1,0 +1,21 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  generateName: post-delete-cleanup-
+  annotations:
+    # 1. Phase: Run ONLY after all other app resources are deleted
+    argocd.argoproj.io/hook: PostDelete
+    
+    # 2. Deletion policy: Automatically clean up this job after success
+    argocd.argoproj.io/hook-delete-policy: HookSucceeded
+spec:
+  template:
+    spec:
+      containers:
+      - name: cleanup-external-db
+        image: curlimages/curl:latest
+        command: 
+          - "sh"
+          - "-c"
+          - "echo 'Deleting external resources...'; curl -X DELETE api.cloudprovider.com"
+      restartPolicy: Never

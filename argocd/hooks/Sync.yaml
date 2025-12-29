@@ -1,0 +1,19 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  generateName: sync-config-fetcher-
+  annotations:
+    # 1. Define the phase: This runs AT THE SAME TIME as your app manifests
+    argocd.argoproj.io/hook: Sync
+    
+    # 2. Deletion policy: Clean up once the job finishes successfully
+    argocd.argoproj.io/hook-delete-policy: HookSucceeded
+spec:
+  template:
+    spec:
+      containers:
+      - name: fetch-secrets
+        image: curlimages/curl:latest
+        command: ["sh", "-c", "echo 'Syncing external assets...'; sleep 5; echo 'Assets Ready!'"]
+      restartPolicy: Never
+
