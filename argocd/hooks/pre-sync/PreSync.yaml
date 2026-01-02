@@ -1,3 +1,15 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: experimental-config
+  annotations:
+    # This instructs Argo CD to ignore this manifest during sync
+    argocd.argoproj.io/hook: Skip
+data:
+  feature-flag: "false"
+  notes: "This manifest is for local reference only and won't be deployed."
+
+---
 # Wave 0: PreSync Hook
 apiVersion: batch/v1
 kind: Job
