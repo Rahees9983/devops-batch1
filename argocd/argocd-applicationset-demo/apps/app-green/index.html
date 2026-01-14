@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>App Green</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .card {
+            background: white;
+            border-radius: 20px;
+            padding: 40px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            text-align: center;
+            max-width: 400px;
+        }
+        .app-icon {
+            width: 80px;
+            height: 80px;
+            background: #11998e;
+            border-radius: 20px;
+            margin: 0 auto 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 40px;
+            color: white;
+        }
+        h1 { color: #333; margin-bottom: 10px; }
+        .badge {
+            background: #11998e;
+            color: white;
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-size: 12px;
+            display: inline-block;
+            margin-bottom: 20px;
+        }
+        .info {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 15px;
+            margin-top: 20px;
+        }
+        .info p { color: #666; font-size: 14px; margin: 5px 0; }
+        .status {
+            margin-top: 15px;
+            padding: 10px;
+            background: #d4edda;
+            border-radius: 8px;
+            color: #155724;
+        }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <div class="app-icon">G</div>
+        <h1>App Green</h1>
+        <span class="badge">ArgoCD Demo</span>
+        <p>This is the Green application deployed via ArgoCD ApplicationSet</p>
+        <div class="info">
+            <p><strong>Environment:</strong> <span id="env">Production</span></p>
+            <p><strong>Version:</strong> v1.0.0</p>
+            <p><strong>Color:</strong> Green (#11998e)</p>
+        </div>
+        <div class="status">Status: Running</div>
+    </div>
+</body>
+</html>

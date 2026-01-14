@@ -1,0 +1,35 @@
+# Blue-Green Rollout POC
+# Uses argoproj/rollouts-demo image which shows color-coded UI
+
+apiVersion: argoproj.io/v1alpha1
+kind: Rollout
+metadata:
+  name: rollout-bluegreen
+  namespace: default
+spec:
+  replicas: 2
+  revisionHistoryLimit: 2
+  selector:
+    matchLabels:
+      app: rollout-bluegreen
+  template:
+    metadata:
+      labels:
+        app: rollout-bluegreen
+    spec:
+      containers:
+      - name: rollouts-demo
+        image: argoproj/rollouts-demo:blue
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8080
+  strategy:
+    blueGreen:
+      # Service for production traffic (stable version)
+      activeService: bluegreen-active
+      # Service for preview traffic (new version for testing)
+      previewService: bluegreen-preview
+      # Manual promotion required
+      autoPromotionEnabled: false
+      # Keep old ReplicaSet running for 30s after promotion (for rollback)
+      scaleDownDelaySeconds: 30

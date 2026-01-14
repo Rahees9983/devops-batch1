@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: myapp-production
+  namespace: default
+  labels:
+    app: myapp
+    role: production
+spec:
+  type: ClusterIP
+  selector:
+    app: myapp
+    environment: blue  # Currently pointing to BLUE (v1)
+                       # Switch to 'green' to switch to v2
+  ports:
+  - port: 80
+    targetPort: 8080
+    protocol: TCP
+    name: http

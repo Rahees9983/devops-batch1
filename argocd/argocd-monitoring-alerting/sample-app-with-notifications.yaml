@@ -1,0 +1,25 @@
+# Sample ArgoCD Application with Slack Notification Annotations
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: sample-app
+  namespace: argocd
+  annotations:
+    # Subscribe to all notification triggers
+    # Format: notifications.argoproj.io/subscribe.<trigger-name>.<service>: <channel>
+    # Notify on sync succeeded (green message)
+    notifications.argoproj.io/subscribe.on-sync-succeeded.slack: all-devops-channel
+
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/Rahees9983/babaer-temp.git
+    targetRevision: dev
+    path: k8s-manifests
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: default
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true

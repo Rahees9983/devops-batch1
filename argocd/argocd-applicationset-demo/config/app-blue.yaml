@@ -1,0 +1,5 @@
+name: app-blue
+namespace: demo-blue
+appPath: argocd-applicationset-demo/apps/app-blue
+environment: production
+replicas: 2

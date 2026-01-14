@@ -1,0 +1,5 @@
+name: app-green
+namespace: demo-green
+appPath: argocd-applicationset-demo/apps/app-green
+environment: development
+replicas: 1

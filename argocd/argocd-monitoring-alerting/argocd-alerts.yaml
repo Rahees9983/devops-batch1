@@ -1,0 +1,90 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: argocd-alerts
+  namespace: monitoring
+  labels:
+    release: my-release  # Must match Prometheus ruleSelector
+spec:
+  groups:
+    - name: argocd.rules
+      rules:
+        # Application Out of Sync
+        - alert: ApplicationOutofSync #8.213.50.47
+          expr: argocd_app_info{sync_status="OutOfSync"} == 1
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "ArgoCD Application '{{ $labels.name }}' is OutOfSync"
+            description: "Application {{ $labels.name }} in project {{ $labels.project }} has been OutOfSync for more than 5 minutes."
+
+        # Application Health Degraded
+        - alert: ArgoApplicationDegraded
+          expr: argocd_app_info{health_status="Degraded"} == 1
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "ArgoCD Application '{{ $labels.name }}' is Degraded"
+            description: "Application {{ $labels.name }} health status is Degraded."
+
+        # Application Health Unknown
+        - alert: ArgoApplicationUnknown
+          expr: argocd_app_info{health_status="Unknown"} == 1
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "ArgoCD Application '{{ $labels.name }}' health is Unknown"
+            description: "Application {{ $labels.name }} health status has been Unknown for more than 10 minutes."
+
+        # Application Sync Failed
+        - alert: ArgoApplicationSyncFailed
+          expr: argocd_app_sync_total{phase="Failed"} > 0
+          for: 1m
+          labels:
+            severity: critical
+          annotations:
+            summary: "ArgoCD Application '{{ $labels.name }}' sync failed"
+            description: "Application {{ $labels.name }} sync operation failed."
+
+        # ArgoCD Server Down
+        - alert: ArgoCDServerDown
+          expr: up{job=~".*argocd-server.*"} == 0
+          for: 2m
+          labels:
+            severity: critical
+          annotations:
+            summary: "ArgoCD Server is down"
+            description: "ArgoCD Server has been down for more than 2 minutes."
+
+        # ArgoCD Repo Server Down
+        - alert: ArgoCDRepoServerDown
+          expr: up{job=~".*argocd-repo-server.*"} == 0
+          for: 2m
+          labels:
+            severity: critical
+          annotations:
+            summary: "ArgoCD Repo Server is down"
+            description: "ArgoCD Repo Server has been down for more than 2 minutes."
+
+        # ArgoCD Application Controller Down
+        - alert: ArgoCDApplicationControllerDown
+          expr: up{job=~".*argocd-application-controller.*"} == 0
+          for: 2m
+          labels:
+            severity: critical
+          annotations:
+            summary: "ArgoCD Application Controller is down"
+            description: "ArgoCD Application Controller has been down for more than 2 minutes."
+
+        # Too many pending applications
+        - alert: ArgoCDTooManyPendingApps
+          expr: sum(argocd_app_info{sync_status="OutOfSync"}) > 5
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Too many ArgoCD applications are OutOfSync"
+            description: "More than 5 applications are OutOfSync for more than 10 minutes."

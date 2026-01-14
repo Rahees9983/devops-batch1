@@ -1,0 +1,50 @@
+# Argo Rollout - Canary Strategy
+# Gradually shifts traffic from old to new version
+
+apiVersion: argoproj.io/v1alpha1
+kind: Rollout
+metadata:
+  name: myapp-canary-rollout
+  namespace: default
+  labels:
+    app: myapp-canary
+spec:
+  replicas: 10
+  revisionHistoryLimit: 2
+  selector:
+    matchLabels:
+      app: myapp-canary
+  template:
+    metadata:
+      labels:
+        app: myapp-canary
+    spec:
+      containers:
+      - name: app
+        image: rahees9983/deployment-strategy-app:v1
+        ports:
+        - containerPort: 8080
+          name: http
+        env:
+        - name: VERSION
+          value: "v1"
+  strategy:
+    canary:
+      # Canary steps - gradually increase traffic to new version
+      steps:
+      # Step 1: Send 20% traffic to canary, pause for manual check
+      - setWeight: 20
+      - pause: {}  # Manual promotion required
+      # Step 2: Send 40% traffic to canary, wait 30 seconds
+      - setWeight: 40
+      - pause:
+          duration: 30s
+      # Step 3: Send 60% traffic to canary, wait 30 seconds
+      - setWeight: 60
+      - pause:
+          duration: 30s
+      # Step 4: Send 80% traffic to canary, wait 30 seconds
+      - setWeight: 80
+      - pause:
+          duration: 30s
+      # After all steps: 100% traffic goes to new version

@@ -1,0 +1,5 @@
+# Namespace for the demo
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: rollouts-demo

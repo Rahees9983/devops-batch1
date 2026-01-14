@@ -1,0 +1,54 @@
+# ArgoCD Helm values to enable metrics (argo-cd chart v9.1.9)
+# Usage: helm upgrade argocd argo/argo-cd -n argocd -f argocd-metrics-values.yaml
+
+controller:
+  metrics:
+    enabled: true
+    service:
+      type: ClusterIP
+      servicePort: 8082
+      portName: http-metrics
+
+server:
+  metrics:
+    enabled: true
+    service:
+      type: ClusterIP
+      servicePort: 8083
+      portName: http-metrics
+
+repoServer:
+  metrics:
+    enabled: true
+    service:
+      type: ClusterIP
+      servicePort: 8084
+      portName: http-metrics
+
+applicationSet:
+  metrics:
+    enabled: true
+    service:
+      type: ClusterIP
+      servicePort: 8085
+      portName: http-metrics
+
+dex:
+  metrics:
+    enabled: true
+    service:
+      portName: http-metrics
+
+redis:
+  metrics:
+    enabled: true
+    service:
+      servicePort: 9121
+      portName: http-metrics
+
+notifications:
+  metrics:
+    enabled: true
+    service:
+      servicePort: 9001
+      portName: http-metrics

@@ -1,0 +1,22 @@
+# ServiceMonitor for Prometheus Operator
+# Use this if you have Prometheus Operator installed
+
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: demo-app-monitor
+  namespace: rollouts-demo
+  labels:
+    app: demo-app
+    release: prometheus  # Match your Prometheus release label
+spec:
+  selector:
+    matchLabels:
+      app: demo-app
+  namespaceSelector:
+    matchNames:
+    - rollouts-demo
+  endpoints:
+  - port: metrics
+    interval: 15s
+    path: /metrics

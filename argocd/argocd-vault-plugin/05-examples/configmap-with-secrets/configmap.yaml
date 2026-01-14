@@ -1,0 +1,59 @@
+# ============================================================
+# Example 2: ConfigMap with Embedded Secrets
+# ============================================================
+# This example shows how to inject secrets into configuration
+# files stored in ConfigMaps
+#
+# Vault secrets required:
+# - secret/myapp/database: host, port, username, password, dbname
+# - secret/myapp/redis: host, port, password
+# ============================================================
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: myapp-config
+  namespace: default
+data:
+  # Application configuration with secrets injected
+  config.yaml: |
+    app:
+      name: myapp
+      environment: production
+
+    database:
+      host: <path:secret/data/myapp/database#host>
+      port: <path:secret/data/myapp/database#port>
+      username: <path:secret/data/myapp/database#username>
+      password: <path:secret/data/myapp/database#password>
+      database: <path:secret/data/myapp/database#dbname>
+      ssl_mode: require
+
+    redis:
+      host: <path:secret/data/myapp/redis#host>
+      port: <path:secret/data/myapp/redis#port>
+      password: <path:secret/data/myapp/redis#password>
+
+    logging:
+      level: info
+      format: json
+
+  # JSON configuration example
+  settings.json: |
+    {
+      "api": {
+        "key": "<path:secret/data/myapp/api#key>",
+        "secret": "<path:secret/data/myapp/api#secret>",
+        "endpoint": "https://api.example.com"
+      },
+      "features": {
+        "enable_cache": true,
+        "enable_metrics": true
+      }
+    }
+
+  # Environment file example
+  app.env: |
+    DATABASE_URL=postgresql://<path:secret/data/myapp/database#username>:<path:secret/data/myapp/database#password>@<path:secret/data/myapp/database#host>:<path:secret/data/myapp/database#port>/<path:secret/data/myapp/database#dbname>
+    REDIS_URL=redis://:<path:secret/data/myapp/redis#password>@<path:secret/data/myapp/redis#host>:<path:secret/data/myapp/redis#port>
+    API_KEY=<path:secret/data/myapp/api#key>

@@ -1,0 +1,26 @@
+# ArgoCD Application that uses the argocd-vault-plugin
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: myapp-secrets
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/YOUR-ORG/YOUR-REPO.git
+    targetRevision: HEAD
+    path: path/to/your/manifests
+    plugin:
+      name: argocd-vault-plugin
+      # Environment variables are optional here since they're in the sidecar
+      # But you can override them per-application if needed:
+      # env:
+      #   - name: AWS_REGION
+      #     value: "eu-west-1"
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: default
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true

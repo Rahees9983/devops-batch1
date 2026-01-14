@@ -1,0 +1,62 @@
+# Argo Rollout - Canary with WorkloadRef
+# References an existing Deployment for canary releases
+
+apiVersion: argoproj.io/v1alpha1
+kind: Rollout
+metadata:
+  name: myapp-canary-rollout-workloadref
+  namespace: default
+  labels:
+    app: myapp-canary
+spec:
+  replicas: 5
+  selector:
+    matchLabels:
+      app: myapp-canary
+  # Reference the existing Deployment
+  workloadRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: myapp-canary-deployment
+  strategy:
+    canary:
+      steps:
+      - setWeight: 20
+      - pause: {}
+      - setWeight: 40
+      - pause:
+          duration: 30s
+      - setWeight: 60
+      - pause:
+          duration: 30s
+      - setWeight: 80
+      - pause:
+          duration: 30s
+---
+# The referenced Deployment for canary
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: myapp-canary-deployment
+  namespace: default
+  labels:
+    app: myapp-canary
+spec:
+  selector:
+    matchLabels:
+      app: myapp-canary
+  template:
+    metadata:
+      labels:
+        app: myapp-canary
+    spec:
+      containers:
+      - name: app
+        image: rahees9983/deployment-strategy-app:v1
+        ports:
+        - containerPort: 8080
+          name: http
+        env:
+        - name: VERSION
+          value: "v1"

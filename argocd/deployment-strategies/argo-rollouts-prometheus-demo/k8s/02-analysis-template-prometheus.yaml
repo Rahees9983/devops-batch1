@@ -1,0 +1,56 @@
+# AnalysisTemplate using Prometheus metrics
+# Checks success rate from actual application metrics
+
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: success-rate-prometheus
+  namespace: rollouts-demo
+spec:
+  args:
+  - name: service-name
+  - name: namespace
+    value: rollouts-demo
+
+  metrics:
+  # Metric 1: Check HTTP success rate (should be > 95%)
+  - name: success-rate
+    # Run every 30 seconds
+    interval: 30s
+    # Run for 2 minutes (4 checks)
+    count: 4
+    # Success if success rate > 95%
+    successCondition: result[0] >= 0.95
+    # Fail if 2 checks fail
+    failureLimit: 2
+    provider:
+      prometheus:
+        address: http://prometheus-kube-prometheus-prometheus.monitoring.svc.cluster.local:9090
+        query: |
+          sum(rate(http_requests_total{status="200", namespace="{{args.namespace}}"}[1m])) /
+          sum(rate(http_requests_total{namespace="{{args.namespace}}"}[1m]))
+
+  # Metric 2: Check error rate (should be < 5%)
+  - name: error-rate
+    interval: 30s
+    count: 4
+    successCondition: result[0] <= 0.05
+    failureLimit: 2
+    provider:
+      prometheus:
+        address: http://prometheus-kube-prometheus-prometheus.monitoring.svc.cluster.local:9090
+        query: |
+          sum(rate(http_errors_total{namespace="{{args.namespace}}"}[1m])) /
+          sum(rate(http_requests_total{namespace="{{args.namespace}}"}[1m]))
+
+  # Metric 3: Check latency (P99 should be < 500ms)
+  - name: latency-p99
+    interval: 30s
+    count: 4
+    successCondition: result[0] <= 0.5
+    failureLimit: 2
+    provider:
+      prometheus:
+        address: http://prometheus-kube-prometheus-prometheus.monitoring.svc.cluster.local:9090
+        query: |
+          histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket{namespace="{{args.namespace}}"}[1m])) by (le))

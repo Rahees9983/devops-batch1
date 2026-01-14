@@ -1,0 +1,82 @@
+# Two sidecar containers - one for Vault, one for AWS Secrets Manager
+# Each has its own credentials and plugin config
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: argocd-repo-server
+  namespace: argocd
+spec:
+  template:
+    spec:
+      containers:
+        # Sidecar 1: HashiCorp Vault
+        - name: avp-vault
+          command: [/var/run/argocd/argocd-cmp-server]
+          image: quay.io/argoproj/argocd:v3.2.2
+          envFrom:
+            - secretRef:
+                name: avp-vault-credentials
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 999
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            readOnlyRootFilesystem: true
+            seccompProfile:
+              type: RuntimeDefault
+          volumeMounts:
+            - mountPath: /var/run/argocd
+              name: var-files
+            - mountPath: /home/argocd/cmp-server/plugins
+              name: plugins
+            - mountPath: /tmp
+              name: cmp-tmp-vault
+            - mountPath: /home/argocd/cmp-server/config/plugin.yaml
+              subPath: avp-vault.yaml
+              name: cmp-plugin
+            - mountPath: /usr/local/bin/argocd-vault-plugin
+              name: custom-tools
+              subPath: argocd-vault-plugin
+
+        # Sidecar 2: AWS Secrets Manager
+        - name: avp-aws
+          command: [/var/run/argocd/argocd-cmp-server]
+          image: quay.io/argoproj/argocd:v3.2.2
+          envFrom:
+            - secretRef:
+                name: avp-aws-credentials
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 999
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            readOnlyRootFilesystem: true
+            seccompProfile:
+              type: RuntimeDefault
+          volumeMounts:
+            - mountPath: /var/run/argocd
+              name: var-files
+            - mountPath: /home/argocd/cmp-server/plugins
+              name: plugins
+            - mountPath: /tmp
+              name: cmp-tmp-aws
+            - mountPath: /home/argocd/cmp-server/config/plugin.yaml
+              subPath: avp-aws.yaml
+              name: cmp-plugin
+            - mountPath: /usr/local/bin/argocd-vault-plugin
+              name: custom-tools
+              subPath: argocd-vault-plugin
+
+      volumes:
+        - name: cmp-plugin
+          configMap:
+            name: cmp-plugin
+        - name: cmp-tmp-vault
+          emptyDir: {}
+        - name: cmp-tmp-aws
+          emptyDir: {}

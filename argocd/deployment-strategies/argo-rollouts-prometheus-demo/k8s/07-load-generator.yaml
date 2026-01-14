@@ -1,0 +1,42 @@
+# Load Generator - generates traffic to the app for metrics
+# This ensures Prometheus has data to analyze
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: load-generator
+  namespace: rollouts-demo
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: load-generator
+  template:
+    metadata:
+      labels:
+        app: load-generator
+    spec:
+      containers:
+      - name: loader
+        image: curlimages/curl:latest
+        command:
+        - /bin/sh
+        - -c
+        - |
+          echo "Starting load generator..."
+          while true; do
+            # Hit the stable service
+            curl -s -o /dev/null -w "%{http_code}" http://demo-app-stable.rollouts-demo.svc.cluster.local/ || true
+            # Hit the canary service
+            curl -s -o /dev/null -w "%{http_code}" http://demo-app-canary.rollouts-demo.svc.cluster.local/ || true
+            # Hit the API endpoint
+            curl -s -o /dev/null http://demo-app-stable.rollouts-demo.svc.cluster.local/api/data || true
+            sleep 1
+          done
+        resources:
+          requests:
+            cpu: 10m
+            memory: 16Mi
+          limits:
+            cpu: 50m
+            memory: 32Mi

@@ -1,0 +1,42 @@
+# ApplicationSet Example 2: Git Directory Generator
+# Automatically discovers directories in a Git repo and creates an Application for each
+# Add a new directory = new Application automatically created!
+
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: git-directory-generator-demo
+  namespace: argocd
+spec:
+  generators:
+  # Git directory generator - auto-discovers directories
+  - git:
+      repoURL: https://github.com/Rahees9983/babaer-temp.git
+      revision: dev
+      directories:
+      # This will find all directories under argocd-applicationset-demo/apps/
+      - path: argocd-applicationset-demo/apps/*
+  template:
+    metadata:
+      # {{path.basename}} = directory name (app-blue, app-green, app-red)
+      name: '{{path.basename}}'
+      labels:
+        app.kubernetes.io/name: '{{path.basename}}'
+        generator: git-directory
+    spec:
+      project: default
+      source:
+        repoURL: https://github.com/Rahees9983/babaer-temp.git
+        targetRevision: dev
+        # {{path}} = full path (argocd-applicationset-demo/apps/app-blue, argocd-applicationset-demo/apps/app-green, etc.)
+        path: '{{path}}'
+      destination:
+        server: https://kubernetes.default.svc
+        # Creates namespace based on directory name
+        namespace: '{{path.basename}}'
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+        - CreateNamespace=true

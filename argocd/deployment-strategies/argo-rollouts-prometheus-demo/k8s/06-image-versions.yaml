@@ -1,0 +1,42 @@
+# Different image configurations for testing scenarios
+# Use these to update the rollout and trigger different behaviors
+
+# ============================================================
+# SCENARIO 1: SUCCESSFUL DEPLOYMENT (v2-stable)
+# ============================================================
+# Image: rahees9983/rollouts-demo-app:v2-stable
+# Config: ERROR_RATE=0, LATENCY=0
+# Result: Analysis PASSES, deployment completes successfully
+#
+# Command:
+# kubectl argo rollouts set image demo-app app=rahees9983/rollouts-demo-app:v2-stable -n rollouts-demo
+
+# ============================================================
+# SCENARIO 2: FAILED DEPLOYMENT - HIGH ERROR RATE (v2-buggy)
+# ============================================================
+# Image: rahees9983/rollouts-demo-app:v2-buggy
+# Config: ERROR_RATE=0.5 (50% errors), LATENCY=0
+# Result: Analysis FAILS, automatic ROLLBACK
+#
+# Command:
+# kubectl argo rollouts set image demo-app app=rahees9983/rollouts-demo-app:v2-buggy -n rollouts-demo
+
+# ============================================================
+# SCENARIO 3: FAILED DEPLOYMENT - HIGH LATENCY (v2-slow)
+# ============================================================
+# Image: rahees9983/rollouts-demo-app:v2-slow
+# Config: ERROR_RATE=0, LATENCY=2 (2 second delay)
+# Result: Analysis FAILS (latency > 500ms), automatic ROLLBACK
+#
+# Command:
+# kubectl argo rollouts set image demo-app app=rahees9983/rollouts-demo-app:v2-slow -n rollouts-demo
+
+# ============================================================
+# SCENARIO 4: PARTIAL FAILURE (v2-flaky)
+# ============================================================
+# Image: rahees9983/rollouts-demo-app:v2-flaky
+# Config: ERROR_RATE=0.1 (10% errors), LATENCY=0.2
+# Result: Might pass or fail depending on luck (demonstrates flaky deployments)
+#
+# Command:
+# kubectl argo rollouts set image demo-app app=rahees9983/rollouts-demo-app:v2-flaky -n rollouts-demo

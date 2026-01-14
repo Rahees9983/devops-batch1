@@ -1,0 +1,73 @@
+# Converted Rollout - Blue-Green Strategy
+# Changes from Deployment:
+#   1. apiVersion: apps/v1 → argoproj.io/v1alpha1
+#   2. kind: Deployment → Rollout
+#   3. Added strategy.blueGreen section
+#   4. Need two services: active (production) and preview (testing)
+
+apiVersion: argoproj.io/v1alpha1
+kind: Rollout
+metadata:
+  name: myapp
+  namespace: default
+  labels:
+    app: myapp
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: myapp
+  template:
+    metadata:
+      labels:
+        app: myapp
+    spec:
+      containers:
+      - name: app
+        image: rahees9983/deployment-strategy-app:v1
+        ports:
+        - containerPort: 8080
+          name: http
+        env:
+        - name: VERSION
+          value: "v1"
+  strategy:
+    blueGreen:
+      activeService: myapp-active
+      previewService: myapp-preview
+      autoPromotionEnabled: false
+      scaleDownDelaySeconds: 30
+---
+# Active Service - Production traffic
+apiVersion: v1
+kind: Service
+metadata:
+  name: myapp-active
+  namespace: default
+  labels:
+    app: myapp
+spec:
+  type: LoadBalancer
+  selector:
+    app: myapp
+  ports:
+  - port: 80
+    targetPort: 8080
+    protocol: TCP
+---
+# Preview Service - Test new version before promoting
+apiVersion: v1
+kind: Service
+metadata:
+  name: myapp-preview
+  namespace: default
+  labels:
+    app: myapp
+spec:
+  type: LoadBalancer
+  selector:
+    app: myapp
+  ports:
+  - port: 80
+    targetPort: 8080
+    protocol: TCP

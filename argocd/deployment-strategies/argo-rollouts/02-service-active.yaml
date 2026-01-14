@@ -1,0 +1,20 @@
+# Active Service - Receives production traffic
+# Points to the stable/current version
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: myapp-active
+  namespace: default
+  labels:
+    app: myapp
+    role: active
+spec:
+  type: LoadBalancer #ClusterIP
+  selector:
+    app: myapp
+  ports:
+  - port: 80
+    targetPort: 8080
+    protocol: TCP
+    name: http

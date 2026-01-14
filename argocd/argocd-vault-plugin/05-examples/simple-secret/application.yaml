@@ -1,0 +1,30 @@
+# ============================================================
+# ArgoCD Application for Simple Secret Example
+# ============================================================
+
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: simple-secret-example
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    # Replace with your Git repo URL
+    repoURL: https://github.com/YOUR-USERNAME/YOUR-REPO.git
+    targetRevision: HEAD
+    path: examples/simple-secret
+    # Specify the AVP plugin
+    plugin:
+      name: argocd-vault-plugin
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: default
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

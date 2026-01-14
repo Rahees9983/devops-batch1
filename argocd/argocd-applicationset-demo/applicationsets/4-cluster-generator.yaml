@@ -1,0 +1,43 @@
+# ApplicationSet Example 4: Cluster Generator
+# Automatically deploys to all clusters registered in ArgoCD
+# Add a new cluster to ArgoCD = Application automatically deployed!
+
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: cluster-generator-demo
+  namespace: argocd
+spec:
+  generators:
+  # Cluster generator - deploys to all ArgoCD-registered clusters
+  - clusters:
+      # Deploy to ALL clusters (comment out selector to include all)
+      # Or use selector to filter by labels
+      selector:
+        matchLabels:
+          # env: production  # Uncomment to filter by environment
+          argocd.argoproj.io/secret-type: cluster  # Matches all external clusters
+  template:
+    metadata:
+      # {{name}} = cluster name, {{server}} = cluster API server URL
+      name: 'app-blue-{{name}}'
+      labels:
+        app.kubernetes.io/name: app-blue
+        cluster: '{{name}}'
+        generator: cluster
+    spec:
+      project: default
+      source:
+        repoURL: https://github.com/Rahees9983/babaer-temp.git
+        targetRevision: dev
+        path: argocd-applicationset-demo/apps/app-blue
+      destination:
+        # {{server}} is the cluster's API server URL
+        server: '{{server}}'
+        namespace: demo-blue
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+        - CreateNamespace=true

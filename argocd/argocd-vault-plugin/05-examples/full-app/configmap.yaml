@@ -1,0 +1,46 @@
+# ============================================================
+# Full App Example - ConfigMap with Secrets
+# ============================================================
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: demo-app-config
+  namespace: demo-app
+data:
+  config.yaml: |
+    server:
+      port: 8080
+      host: 0.0.0.0
+
+    database:
+      host: <path:secret/data/demo-app/database#host>
+      port: <path:secret/data/demo-app/database#port>
+      name: <path:secret/data/demo-app/database#name>
+      user: <path:secret/data/demo-app/database#user>
+      password: <path:secret/data/demo-app/database#password>
+      pool_size: 10
+      ssl: true
+
+    cache:
+      type: redis
+      host: <path:secret/data/demo-app/redis#host>
+      port: 6379
+      password: <path:secret/data/demo-app/redis#password>
+      ttl: 3600
+
+    external_services:
+      payment_api:
+        url: https://api.payment.example.com
+        key: <path:secret/data/demo-app/payment#api_key>
+        secret: <path:secret/data/demo-app/payment#api_secret>
+
+      email_service:
+        smtp_host: smtp.example.com
+        smtp_port: 587
+        username: <path:secret/data/demo-app/email#username>
+        password: <path:secret/data/demo-app/email#password>
+
+    logging:
+      level: info
+      format: json

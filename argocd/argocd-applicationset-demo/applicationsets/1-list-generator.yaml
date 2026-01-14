@@ -1,0 +1,50 @@
+# ApplicationSet Example 1: List Generator
+# This is the simplest generator - you define a fixed list of values
+# Each element in the list generates one ArgoCD Application
+
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: list-generator-demo
+  namespace: argocd
+spec:
+  generators:
+  # List generator - manually define each application
+  - list:
+      elements:
+      - appName: app-blue
+        namespace: demo-blue
+        repoPath: argocd-applicationset-demo/apps/app-blue
+      - appName: app-green
+        namespace: demo-green
+        repoPath: argocd-applicationset-demo/apps/app-green
+      - appName: app-red
+        namespace: demo-red
+        repoPath: argocd-applicationset-demo/apps/app-red
+  template:
+    metadata:
+      name: '{{appName}}'
+      labels:
+        app.kubernetes.io/name: '{{appName}}'
+        generator: list
+    spec:
+      project: default
+      source:
+        repoURL: https://github.com/Rahees9983/babaer-temp.git
+        targetRevision: dev
+        path: '{{repoPath}}'
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: '{{namespace}}'
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+        - CreateNamespace=true
+
+
+for i in {1..3};
+do 
+echo $i;
+done 

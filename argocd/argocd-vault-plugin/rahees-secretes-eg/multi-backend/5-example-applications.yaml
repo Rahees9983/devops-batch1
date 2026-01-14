@@ -1,0 +1,37 @@
+# Example: Application using HashiCorp Vault
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: app-with-vault-secrets
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/YOUR-ORG/YOUR-REPO.git
+    targetRevision: HEAD
+    path: manifests/vault-secrets
+    plugin:
+      name: argocd-vault-plugin  # Uses Vault backend
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: default
+
+# Example: Application using AWS Secrets Manager
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: app-with-aws-secrets
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/Rahees9983/devops-batch1.git
+    targetRevision: HEAD
+    path: argocd/aws-secrets  # Create this folder in your repo with example-aws-secret.yaml
+    plugin:
+      name: argocd-vault-plugin-aws  # Uses AWS Secrets Manager backend
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: default

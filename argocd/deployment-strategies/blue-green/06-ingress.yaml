@@ -1,0 +1,43 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: myapp-ingress
+  namespace: default
+spec:
+  ingressClassName: nginx
+  rules:
+  # Production traffic
+  - host: bluegreen.saudicloud.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: myapp-production
+            port:
+              number: 80
+
+  # Direct access to blue (for testing)
+  - host: blue.saudicloud.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: myapp-blue
+            port:
+              number: 80
+
+  # Direct access to green (for testing)
+  - host: green.saudicloud.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: myapp-green
+            port:
+              number: 80

@@ -1,0 +1,173 @@
+# ============================================================
+# Vault Helm Chart Values - High Availability with Auto-Unseal
+# ============================================================
+# This configuration includes:
+# - 3 replicas for HA
+# - Auto-unseal using AWS KMS (can be changed to GCP/Azure)
+# - TLS enabled
+# - Audit logging
+# ============================================================
+
+global:
+  enabled: true
+  tlsDisable: false
+
+injector:
+  enabled: true
+  replicas: 2
+  resources:
+    requests:
+      memory: 256Mi
+      cpu: 250m
+    limits:
+      memory: 512Mi
+      cpu: 500m
+
+server:
+  enabled: true
+
+  image:
+    repository: hashicorp/vault
+    tag: "1.15.4"
+    pullPolicy: IfNotPresent
+
+  resources:
+    requests:
+      memory: 512Mi
+      cpu: 500m
+    limits:
+      memory: 1Gi
+      cpu: 1000m
+
+  # Extra environment variables for AWS KMS auto-unseal
+  extraEnvironmentVars:
+    VAULT_SEAL_TYPE: awskms
+    # AWS credentials should be provided via IAM roles or secrets
+    # AWS_REGION: us-east-1
+
+  # Mount AWS credentials if not using IAM roles
+  # extraSecretEnvironmentVars:
+  #   - envName: AWS_ACCESS_KEY_ID
+  #     secretName: vault-aws-creds
+  #     secretKey: AWS_ACCESS_KEY_ID
+  #   - envName: AWS_SECRET_ACCESS_KEY
+  #     secretName: vault-aws-creds
+  #     secretKey: AWS_SECRET_ACCESS_KEY
+
+  dataStorage:
+    enabled: true
+    size: 50Gi
+    storageClass: "gp3"  # Change based on your cloud provider
+    accessMode: ReadWriteOnce
+
+  auditStorage:
+    enabled: true
+    size: 20Gi
+    storageClass: "gp3"
+    accessMode: ReadWriteOnce
+
+  standalone:
+    enabled: false
+
+  ha:
+    enabled: true
+    replicas: 3
+    raft:
+      enabled: true
+      setNodeId: true
+      config: |
+        ui = true
+
+        listener "tcp" {
+          tls_disable = 0
+          address = "[::]:8200"
+          cluster_address = "[::]:8201"
+          tls_cert_file = "/vault/userconfig/vault-tls/tls.crt"
+          tls_key_file = "/vault/userconfig/vault-tls/tls.key"
+          tls_client_ca_file = "/vault/userconfig/vault-tls/ca.crt"
+        }
+
+        storage "raft" {
+          path = "/vault/data"
+
+          retry_join {
+            leader_api_addr = "https://vault-0.vault-internal:8200"
+            leader_ca_cert_file = "/vault/userconfig/vault-tls/ca.crt"
+          }
+          retry_join {
+            leader_api_addr = "https://vault-1.vault-internal:8200"
+            leader_ca_cert_file = "/vault/userconfig/vault-tls/ca.crt"
+          }
+          retry_join {
+            leader_api_addr = "https://vault-2.vault-internal:8200"
+            leader_ca_cert_file = "/vault/userconfig/vault-tls/ca.crt"
+          }
+
+          autopilot {
+            cleanup_dead_servers = "true"
+            last_contact_threshold = "200ms"
+            last_contact_failure_threshold = "10m"
+            max_trailing_logs = 250000
+            min_quorum = 2
+            server_stabilization_time = "10s"
+          }
+        }
+
+        # AWS KMS Auto-Unseal
+        seal "awskms" {
+          region     = "us-east-1"
+          kms_key_id = "YOUR-KMS-KEY-ID"
+        }
+
+        # Audit logging
+        # audit "file" {
+        #   file_path = "/vault/audit/vault_audit.log"
+        # }
+
+        service_registration "kubernetes" {}
+
+        # Telemetry
+        telemetry {
+          prometheus_retention_time = "30s"
+          disable_hostname = true
+        }
+
+  # Service account annotations for AWS IAM roles
+  serviceAccount:
+    create: true
+    annotations:
+      # eks.amazonaws.com/role-arn: arn:aws:iam::ACCOUNT:role/vault-role
+
+  # Extra volumes for TLS certificates
+  extraVolumes:
+    - type: secret
+      name: vault-tls
+      path: /vault/userconfig
+
+  # Affinity rules for spreading pods
+  affinity:
+    podAntiAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        - labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: vault
+              component: server
+          topologyKey: kubernetes.io/hostname
+
+  # Tolerations for dedicated nodes
+  # tolerations:
+  #   - key: "vault"
+  #     operator: "Equal"
+  #     value: "true"
+  #     effect: "NoSchedule"
+
+ui:
+  enabled: true
+  serviceType: "LoadBalancer"
+  externalPort: 443
+
+# Pod disruption budget
+serverTelemetry:
+  serviceMonitor:
+    enabled: false
+    # Enable for Prometheus monitoring

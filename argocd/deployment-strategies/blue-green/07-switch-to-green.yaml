@@ -1,0 +1,20 @@
+# Use this to switch production traffic to GREEN (v2)
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: myapp-production
+  namespace: default
+  labels:
+    app: myapp
+    role: production
+spec:
+  type: ClusterIP
+  selector:
+    app: myapp
+    environment: green  # ← CHANGED from 'blue' to 'green'
+  ports:
+  - port: 80
+    targetPort: 8080
+    protocol: TCP
+    name: http

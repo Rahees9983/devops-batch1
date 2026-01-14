@@ -1,0 +1,33 @@
+# Active Service - Production traffic
+apiVersion: v1
+kind: Service
+metadata:
+  name: bluegreen-active
+  namespace: default
+  labels:
+    app: rollout-bluegreen
+spec:
+  type: LoadBalancer
+  selector:
+    app: rollout-bluegreen
+  ports:
+  - port: 80
+    targetPort: 8080
+    protocol: TCP
+---
+# Preview Service - Test new version before promotion
+apiVersion: v1
+kind: Service
+metadata:
+  name: bluegreen-preview
+  namespace: default
+  labels:
+    app: rollout-bluegreen
+spec:
+  type: LoadBalancer
+  selector:
+    app: rollout-bluegreen
+  ports:
+  - port: 80
+    targetPort: 8080
+    protocol: TCP

@@ -1,0 +1,59 @@
+# Services for the demo app
+
+# Stable service - production traffic
+apiVersion: v1
+kind: Service
+metadata:
+  name: demo-app-stable
+  namespace: rollouts-demo
+  labels:
+    app: demo-app
+spec:
+  type: LoadBalancer
+  selector:
+    app: demo-app
+  ports:
+  - port: 80
+    targetPort: 8080
+    protocol: TCP
+    name: http
+---
+# Canary service - canary traffic
+apiVersion: v1
+kind: Service
+metadata:
+  name: demo-app-canary
+  namespace: rollouts-demo
+  labels:
+    app: demo-app
+spec:
+  type: ClusterIP
+  selector:
+    app: demo-app
+  ports:
+  - port: 80
+    targetPort: 8080
+    protocol: TCP
+    name: http
+---
+# Metrics service - for Prometheus scraping
+apiVersion: v1
+kind: Service
+metadata:
+  name: demo-app-metrics
+  namespace: rollouts-demo
+  labels:
+    app: demo-app
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "8080"
+    prometheus.io/path: "/metrics"
+spec:
+  type: ClusterIP
+  selector:
+    app: demo-app
+  ports:
+  - port: 8080
+    targetPort: 8080
+    protocol: TCP
+    name: metrics

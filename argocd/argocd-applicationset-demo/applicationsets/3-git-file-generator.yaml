@@ -1,0 +1,40 @@
+# ApplicationSet Example 3: Git File Generator
+# Reads configuration from JSON/YAML files in the Git repo
+# Great for complex configurations stored in config files
+
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: git-file-generator-demo
+  namespace: argocd
+spec:
+  generators:
+  # Git file generator - reads config from files
+  - git:
+      repoURL: https://github.com/Rahees9983/babaer-temp.git
+      revision: dev
+      files:
+      # Read individual config files (YAML format)
+      - path: "argocd-applicationset-demo/config/app-*.yaml"
+  template:
+    metadata:
+      name: '{{name}}'
+      labels:
+        app.kubernetes.io/name: '{{name}}'
+        environment: '{{environment}}'
+        generator: git-file
+    spec:
+      project: default
+      source:
+        repoURL: https://github.com/Rahees9983/babaer-temp.git
+        targetRevision: dev
+        path: '{{appPath}}'
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: '{{namespace}}'
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+        - CreateNamespace=true

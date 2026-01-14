@@ -1,0 +1,59 @@
+# Argo Rollout - Blue-Green with WorkloadRef
+# Instead of embedding the pod template, reference an existing Deployment
+# This allows you to keep your existing Deployment and add Rollout behavior
+
+apiVersion: argoproj.io/v1alpha1
+kind: Rollout
+metadata:
+  name: myapp-rollout-workloadref
+  namespace: default
+  labels:
+    app: myapp
+spec:
+  replicas: 5
+  selector:
+    matchLabels:
+      app: myapp
+  # WorkloadRef references an existing Deployment
+  # The Rollout will take over management of the Deployment's ReplicaSets
+  workloadRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: myapp-deployment  # Name of the existing Deployment to reference
+  strategy:
+    blueGreen:
+      activeService: myapp-active
+      previewService: myapp-preview
+      autoPromotionEnabled: false
+      scaleDownDelaySeconds: 30
+---
+# The referenced Deployment
+# Rollout will manage this Deployment's ReplicaSets for blue-green switching
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: myapp-deployment
+  namespace: default
+  labels:
+    app: myapp
+spec:
+  # Note: replicas is managed by the Rollout, not the Deployment
+  # You can omit replicas here or the Rollout will override it
+  selector:
+    matchLabels:
+      app: myapp
+  template:
+    metadata:
+      labels:
+        app: myapp
+    spec:
+      containers:
+      - name: app
+        image: rahees9983/deployment-strategy-app:v1
+        ports:
+        - containerPort: 8080
+          name: http
+        env:
+        - name: VERSION
+          value: "v1"

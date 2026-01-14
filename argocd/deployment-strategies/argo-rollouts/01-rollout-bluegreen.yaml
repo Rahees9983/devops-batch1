@@ -1,0 +1,41 @@
+# Argo Rollout - Blue-Green Strategy
+# Converted from traditional K8s Deployment to Rollout
+# One Rollout manages both blue and green ReplicaSets automatically
+
+apiVersion: argoproj.io/v1alpha1
+kind: Rollout
+metadata:
+  name: myapp-rollout
+  namespace: default
+  labels:
+    app: myapp
+spec:
+  replicas: 5
+  revisionHistoryLimit: 2
+  selector:
+    matchLabels:
+      app: myapp
+  template:
+    metadata:
+      labels:
+        app: myapp
+    spec:
+      containers:
+      - name: app
+        image: rahees9983/deployment-strategy-app:v1
+        ports:
+        - containerPort: 8080
+          name: http
+        env:
+        - name: VERSION
+          value: "v1"
+  strategy:
+    blueGreen:
+      # Service that receives production traffic (current/stable version)
+      activeService: myapp-active
+      # Service that receives preview traffic (new version for testing)
+      previewService: myapp-preview
+      # Set to false for manual promotion, true for automatic
+      autoPromotionEnabled: false
+      # Time to wait before scaling down old ReplicaSet after promotion
+      scaleDownDelaySeconds: 30

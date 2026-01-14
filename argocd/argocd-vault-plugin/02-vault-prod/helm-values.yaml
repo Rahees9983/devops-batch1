@@ -1,0 +1,142 @@
+# ============================================================
+# Vault Helm Chart Values - Production Setup
+# ============================================================
+# Install with:
+#   helm repo add hashicorp https://helm.releases.hashicorp.com
+#   helm install vault hashicorp/vault -n vault --create-namespace -f helm-values.yaml
+# ============================================================
+
+global:
+  enabled: true
+  tlsDisable: false
+
+injector:
+  enabled: true
+  replicas: 1
+  resources:
+    requests:
+      memory: 256Mi
+      cpu: 250m
+    limits:
+      memory: 256Mi
+      cpu: 250m
+
+server:
+  enabled: true
+
+  # Enterprise license (leave empty for open source)
+  enterpriseLicense:
+    secretName: ""
+    secretKey: ""
+
+  image:
+    repository: hashicorp/vault
+    tag: "1.15.4"
+    pullPolicy: IfNotPresent
+
+  # Resource limits
+  resources:
+    requests:
+      memory: 256Mi
+      cpu: 250m
+    limits:
+      memory: 512Mi
+      cpu: 500m
+
+  # Readiness/Liveness probes
+  readinessProbe:
+    enabled: true
+    path: "/v1/sys/health?standbyok=true&sealedcode=204&uninitcode=204"
+  livenessProbe:
+    enabled: true
+    path: "/v1/sys/health?standbyok=true"
+    initialDelaySeconds: 60
+
+  # Vault configuration
+  extraEnvironmentVars:
+    VAULT_CACERT: /vault/userconfig/vault-tls/ca.crt
+    VAULT_TLSCERT: /vault/userconfig/vault-tls/tls.crt
+    VAULT_TLSKEY: /vault/userconfig/vault-tls/tls.key
+
+  # Data storage
+  dataStorage:
+    enabled: true
+    size: 10Gi
+    storageClass: null
+    accessMode: ReadWriteOnce
+
+  # Audit storage
+  auditStorage:
+    enabled: true
+    size: 5Gi
+    storageClass: null
+    accessMode: ReadWriteOnce
+
+  # Standalone mode configuration
+  standalone:
+    enabled: false
+
+  # High Availability mode
+  ha:
+    enabled: true
+    replicas: 3
+
+    # Raft integrated storage (recommended)
+    raft:
+      enabled: true
+      setNodeId: true
+      config: |
+        ui = true
+
+        listener "tcp" {
+          tls_disable = 1
+          address = "[::]:8200"
+          cluster_address = "[::]:8201"
+        }
+
+        storage "raft" {
+          path = "/vault/data"
+
+          retry_join {
+            leader_api_addr = "http://vault-0.vault-internal:8200"
+          }
+          retry_join {
+            leader_api_addr = "http://vault-1.vault-internal:8200"
+          }
+          retry_join {
+            leader_api_addr = "http://vault-2.vault-internal:8200"
+          }
+        }
+
+        service_registration "kubernetes" {}
+
+  # Service configuration
+  service:
+    enabled: true
+    type: ClusterIP
+    port: 8200
+    targetPort: 8200
+
+  # Ingress for UI access
+  ingress:
+    enabled: false
+    # Uncomment and configure for your ingress
+    # ingressClassName: nginx
+    # hosts:
+    #   - host: vault.example.com
+    #     paths: []
+    # tls:
+    #   - secretName: vault-tls
+    #     hosts:
+    #       - vault.example.com
+
+# UI configuration
+ui:
+  enabled: true
+  serviceType: "ClusterIP"
+  serviceNodePort: null
+  externalPort: 8200
+
+# CSI provider (optional - for mounting secrets as volumes)
+csi:
+  enabled: false

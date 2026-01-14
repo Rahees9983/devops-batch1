@@ -1,0 +1,34 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: app-blue
+  namespace: default
+  labels:
+    app: myapp
+    version: v1
+    environment: blue
+spec:
+  replicas: 5
+  selector:
+    matchLabels:
+      app: myapp
+      version: v1
+      environment: blue
+  template:
+    metadata:
+      labels:
+        app: myapp
+        version: v1
+        environment: blue
+    spec:
+      containers:
+      - name: app
+        image: rahees9983/deployment-strategy-app:v1
+        ports:
+        - containerPort: 8080
+          name: http
+        env:
+        - name: VERSION
+          value: "v1"
+        - name: ENVIRONMENT
+          value: "BLUE"

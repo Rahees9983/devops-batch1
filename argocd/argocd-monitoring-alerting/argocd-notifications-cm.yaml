@@ -1,0 +1,146 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-notifications-cm
+  namespace: argocd
+data:
+  # ArgoCD URL context
+  # Options:
+  #   - Internal: https://argocd-server.argocd.svc.cluster.local (inside cluster)
+  #   - External: https://8.213.84.167 (for clickable links in Slack)
+  context: |
+    argocdUrl: https://argocd-server.argocd.svc.cluster.local
+
+  # Slack service configuration
+  service.slack: |
+    token: $slack-token
+    username: argocd-bot
+    icon: ":rocket:"
+
+  # ===================
+  # TEMPLATES
+  # ===================
+
+  # Template: Sync Succeeded (Green)
+  template.app-sync-succeeded: |
+    message: |
+      :white_check_mark: Application {{.app.metadata.name}} has been synced successfully!
+    slack:
+      attachments: |
+        [{
+          "title": "{{.app.metadata.name}}",
+          "title_link": "{{.context.argocdUrl}}/applications/{{.app.metadata.name}}",
+          "color": "#18be52",
+          "fields": [{
+            "title": "Sync Status",
+            "value": "{{.app.status.sync.status}}",
+            "short": true
+          }, {
+            "title": "Health Status",
+            "value": "{{.app.status.health.status}}",
+            "short": true
+          }, {
+            "title": "Repository",
+            "value": "{{.app.spec.source.repoURL}}",
+            "short": true
+          }, {
+            "title": "Revision",
+            "value": "{{.app.status.sync.revision}}",
+            "short": true
+          }]
+        }]
+
+  # Template: Sync Failed (Red)
+  template.app-sync-failed: |
+    message: |
+      :x: Application {{.app.metadata.name}} sync has FAILED!
+    slack:
+      attachments: |
+        [{
+          "title": "{{.app.metadata.name}} - SYNC FAILED",
+          "title_link": "{{.context.argocdUrl}}/applications/{{.app.metadata.name}}",
+          "color": "#E96D76",
+          "fields": [{
+            "title": "Sync Status",
+            "value": "{{.app.status.sync.status}}",
+            "short": true
+          }, {
+            "title": "Health Status",
+            "value": "{{.app.status.health.status}}",
+            "short": true
+          }, {
+            "title": "Repository",
+            "value": "{{.app.spec.source.repoURL}}",
+            "short": true
+          }]
+        }]
+
+  # Template: Health Degraded (Orange)
+  template.app-health-degraded: |
+    message: |
+      :warning: Application {{.app.metadata.name}} health is DEGRADED!
+    slack:
+      attachments: |
+        [{
+          "title": "{{.app.metadata.name}} - HEALTH DEGRADED",
+          "title_link": "{{.context.argocdUrl}}/applications/{{.app.metadata.name}}",
+          "color": "#f4c030",
+          "fields": [{
+            "title": "Sync Status",
+            "value": "{{.app.status.sync.status}}",
+            "short": true
+          }, {
+            "title": "Health Status",
+            "value": "{{.app.status.health.status}}",
+            "short": true
+          }]
+        }]
+
+  # Template: Out of Sync (Yellow)
+  template.app-out-of-sync: |
+    message: |
+      :arrows_counterclockwise: Application {{.app.metadata.name}} is OUT OF SYNC!
+    slack:
+      attachments: |
+        [{
+          "title": "{{.app.metadata.name}} - OUT OF SYNC",
+          "title_link": "{{.context.argocdUrl}}/applications/{{.app.metadata.name}}",
+          "color": "#f4c030",
+          "fields": [{
+            "title": "Sync Status",
+            "value": "{{.app.status.sync.status}}",
+            "short": true
+          }, {
+            "title": "Health Status",
+            "value": "{{.app.status.health.status}}",
+            "short": true
+          }, {
+            "title": "Repository",
+            "value": "{{.app.spec.source.repoURL}}",
+            "short": true
+          }]
+        }]
+
+  # ===================
+  # TRIGGERS
+  # ===================
+
+  # Trigger: On Sync Succeeded
+  trigger.on-sync-succeeded: |
+    - when: app.status.operationState.phase in ['Succeeded'] and app.status.health.status == 'Healthy'
+      send: [app-sync-succeeded]
+
+  # Trigger: On Sync Failed
+  trigger.on-sync-failed: |
+    - when: app.status.operationState.phase in ['Error', 'Failed']
+      send: [app-sync-failed]
+
+  # Trigger: On Health Degraded
+  trigger.on-health-degraded: |
+    - when: app.status.health.status == 'Degraded'
+      send: [app-health-degraded]
+
+  # Trigger: On Sync Status Out of Sync
+  trigger.on-sync-status-unknown: |
+    - when: app.status.sync.status == 'OutOfSync'
+      send: [app-out-of-sync]

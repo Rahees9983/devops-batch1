@@ -1,0 +1,81 @@
+# Blue-Green Rollout with Pre-Promotion Analysis
+# Runs analysis on preview before promoting to active
+
+apiVersion: argoproj.io/v1alpha1
+kind: Rollout
+metadata:
+  name: bluegreen-with-analysis
+  namespace: default
+  labels:
+    app: bluegreen-analysis-demo
+spec:
+  replicas: 3
+  revisionHistoryLimit: 2
+  selector:
+    matchLabels:
+      app: bluegreen-analysis-demo
+  template:
+    metadata:
+      labels:
+        app: bluegreen-analysis-demo
+    spec:
+      containers:
+      - name: app
+        image: rahees9983/deployment-strategy-app:v1
+        ports:
+        - containerPort: 8080
+          name: http
+        env:
+        - name: VERSION
+          value: "v1"
+  strategy:
+    blueGreen:
+      activeService: bg-analysis-active
+      previewService: bg-analysis-preview
+      autoPromotionEnabled: false
+
+      # Pre-promotion analysis - runs BEFORE switching traffic
+      prePromotionAnalysis:
+        templates:
+        - templateName: http-success-analysis
+        args:
+        - name: service-name
+          value: bg-analysis-preview
+
+      # Post-promotion analysis - runs AFTER switching traffic (optional)
+      # If this fails, rollback happens automatically
+      postPromotionAnalysis:
+        templates:
+        - templateName: http-success-analysis
+        args:
+        - name: service-name
+          value: bg-analysis-active
+
+      scaleDownDelaySeconds: 30
+---
+# Services for Blue-Green with Analysis
+apiVersion: v1
+kind: Service
+metadata:
+  name: bg-analysis-active
+  namespace: default
+spec:
+  type: LoadBalancer
+  selector:
+    app: bluegreen-analysis-demo
+  ports:
+  - port: 80
+    targetPort: 8080
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: bg-analysis-preview
+  namespace: default
+spec:
+  type: ClusterIP
+  selector:
+    app: bluegreen-analysis-demo
+  ports:
+  - port: 80
+    targetPort: 8080

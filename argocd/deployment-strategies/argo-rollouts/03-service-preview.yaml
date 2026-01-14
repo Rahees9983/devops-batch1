@@ -1,0 +1,20 @@
+# Preview Service - Receives preview/test traffic
+# Points to the new version being tested before promotion
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: myapp-preview
+  namespace: default
+  labels:
+    app: myapp
+    role: preview
+spec:
+  type: LoadBalancer #ClusterIP
+  selector:
+    app: myapp
+  ports:
+  - port: 80
+    targetPort: 8080
+    protocol: TCP
+    name: http

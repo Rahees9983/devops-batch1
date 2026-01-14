@@ -1,0 +1,80 @@
+# Sidecar container and volume to add to argocd-repo-server deployment
+# Use the kubectl patch command at the bottom of this file
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: argocd-repo-server
+  namespace: argocd
+spec:
+  template:
+    spec:
+      containers:
+        # Add this sidecar container
+        - name: avp
+          command: [/var/run/argocd/argocd-cmp-server]
+          image: quay.io/argoproj/argocd:v3.2.2
+          envFrom:
+            - secretRef:
+                name: argocd-vault-plugin-credentials
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 999
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            readOnlyRootFilesystem: true
+            seccompProfile:
+              type: RuntimeDefault
+          volumeMounts:
+            - mountPath: /var/run/argocd
+              name: var-files
+            - mountPath: /home/argocd/cmp-server/plugins
+              name: plugins
+            - mountPath: /tmp
+              name: tmp
+            - mountPath: /home/argocd/cmp-server/config/plugin.yaml
+              subPath: avp.yaml
+              name: cmp-plugin
+            - mountPath: /usr/local/bin/argocd-vault-plugin
+              name: custom-tools
+              subPath: argocd-vault-plugin
+      volumes:
+        - name: cmp-plugin
+          configMap:
+            name: cmp-plugin
+
+# -----------------------------------------------------------------------------
+# KUBECTL PATCH COMMAND
+# -----------------------------------------------------------------------------
+# Run this command to add the sidecar and volume:
+#
+# kubectl patch deployment argocd-repo-server -n argocd --type='json' -p='[
+#   {
+#     "op": "add",
+#     "path": "/spec/template/spec/volumes/-",
+#     "value": {
+#       "name": "cmp-plugin",
+#       "configMap": {"name": "cmp-plugin"}
+#     }
+#   },
+#   {
+#     "op": "add",
+#     "path": "/spec/template/spec/containers/-",
+#     "value": {
+#       "name": "avp",
+#       "command": ["/var/run/argocd/argocd-cmp-server"],
+#       "image": "quay.io/argoproj/argocd:v3.2.2",
+#       "envFrom": [{"secretRef": {"name": "argocd-vault-plugin-credentials"}}],
+#       "securityContext": {"runAsNonRoot": true, "runAsUser": 999},
+#       "volumeMounts": [
+#         {"mountPath": "/var/run/argocd", "name": "var-files"},
+#         {"mountPath": "/home/argocd/cmp-server/plugins", "name": "plugins"},
+#         {"mountPath": "/tmp", "name": "tmp"},
+#         {"mountPath": "/home/argocd/cmp-server/config/plugin.yaml", "subPath": "avp.yaml", "name": "cmp-plugin"},
+#         {"mountPath": "/usr/local/bin/argocd-vault-plugin", "name": "custom-tools", "subPath": "argocd-vault-plugin"}
+#       ]
+#     }
+#   }
+# ]'

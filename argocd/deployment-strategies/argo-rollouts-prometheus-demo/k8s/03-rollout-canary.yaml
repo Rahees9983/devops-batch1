@@ -1,0 +1,96 @@
+# Canary Rollout with Prometheus Analysis
+# Demonstrates automatic rollback on failure
+
+apiVersion: argoproj.io/v1alpha1
+kind: Rollout
+metadata:
+  name: demo-app
+  namespace: rollouts-demo
+  labels:
+    app: demo-app
+spec:
+  replicas: 5
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app: demo-app
+  template:
+    metadata:
+      labels:
+        app: demo-app
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+        prometheus.io/path: "/metrics"
+    spec:
+      containers:
+      - name: app
+        image: rahees9983/rollouts-demo:v1-stable
+        ports:
+        - containerPort: 8080
+          name: http
+        env:
+        - name: APP_VERSION
+          value: "v1"
+        - name: ERROR_RATE
+          value: "0"        # 0% errors - healthy app
+        - name: LATENCY
+          value: "0"        # No added latency
+        resources:
+          requests:
+            cpu: 50m
+            memory: 64Mi
+          limits:
+            cpu: 200m
+            memory: 128Mi
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 10
+  strategy:
+    canary:
+      # Traffic management
+      stableService: demo-app-stable
+      canaryService: demo-app-canary
+
+      # Canary steps with analysis
+      steps:
+      # Step 1: 10% traffic to canary
+      - setWeight: 10
+      # Step 2: Wait and analyze
+      - pause: {duration: 30s}
+      # Step 3: Run Prometheus analysis
+      - analysis:
+          templates:
+          - templateName: success-rate-prometheus
+          args:
+          - name: service-name
+            value: demo-app-canary
+      # Step 4: If analysis passed, 30% traffic
+      - setWeight: 30
+      - pause: {duration: 30s}
+      # Step 5: 50% traffic
+      - setWeight: 50
+      - analysis:
+          templates:
+          - templateName: success-rate-prometheus
+          args:
+          - name: service-name
+            value: demo-app-canary
+      # Step 6: 80% traffic
+      - setWeight: 80
+      - pause: {duration: 30s}
+      # After all steps: 100% traffic to new version
+
+      # Anti-affinity to spread pods across nodes
+      antiAffinity:
+        preferredDuringSchedulingIgnoredDuringExecution:
+          weight: 100

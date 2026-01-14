@@ -1,0 +1,20 @@
+# Use this to switch production traffic back to BLUE (v1) - ROLLBACK
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: myapp-production
+  namespace: default
+  labels:
+    app: myapp
+    role: production
+spec:
+  type: ClusterIP
+  selector:
+    app: myapp
+    environment: blue  # ← CHANGED from 'green' to 'blue'
+  ports:
+  - port: 80
+    targetPort: 8080
+    protocol: TCP
+    name: http

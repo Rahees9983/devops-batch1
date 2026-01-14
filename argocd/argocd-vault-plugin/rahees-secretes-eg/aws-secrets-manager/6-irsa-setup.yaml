@@ -1,0 +1,85 @@
+# =============================================================================
+# OPTION 2: IRSA (IAM Roles for Service Accounts) - RECOMMENDED FOR PRODUCTION
+# =============================================================================
+# This is more secure than using AWS access keys because:
+# - No long-lived credentials stored in Kubernetes
+# - Credentials are automatically rotated
+# - Fine-grained access control per service account
+
+# -----------------------------------------------------------------------------
+# STEP 1: Create IAM Policy (run in AWS CLI or Terraform)
+# -----------------------------------------------------------------------------
+# aws iam create-policy --policy-name ArgoCD-SecretsManager-ReadOnly --policy-document '{
+#   "Version": "2012-10-17",
+#   "Statement": [
+#     {
+#       "Effect": "Allow",
+#       "Action": [
+#         "secretsmanager:GetSecretValue",
+#         "secretsmanager:DescribeSecret"
+#       ],
+#       "Resource": "arn:aws:secretsmanager:ap-south-1:ACCOUNT_ID:secret:myapp/*"
+#     }
+#   ]
+# }'
+
+# -----------------------------------------------------------------------------
+# STEP 2: Create IAM Role with trust policy for EKS OIDC
+# -----------------------------------------------------------------------------
+# Replace:
+# - ACCOUNT_ID with your AWS account ID
+# - OIDC_PROVIDER with your EKS cluster's OIDC provider URL (without https://)
+#
+# aws iam create-role --role-name ArgoCD-Vault-Plugin-Role --assume-role-policy-document '{
+#   "Version": "2012-10-17",
+#   "Statement": [
+#     {
+#       "Effect": "Allow",
+#       "Principal": {
+#         "Federated": "arn:aws:iam::ACCOUNT_ID:oidc-provider/OIDC_PROVIDER"
+#       },
+#       "Action": "sts:AssumeRoleWithWebIdentity",
+#       "Condition": {
+#         "StringEquals": {
+#           "OIDC_PROVIDER:sub": "system:serviceaccount:argocd:argocd-repo-server",
+#           "OIDC_PROVIDER:aud": "sts.amazonaws.com"
+#         }
+#       }
+#     }
+#   ]
+# }'
+
+# -----------------------------------------------------------------------------
+# STEP 3: Attach policy to role
+# -----------------------------------------------------------------------------
+# aws iam attach-role-policy \
+#   --role-name ArgoCD-Vault-Plugin-Role \
+#   --policy-arn arn:aws:iam::ACCOUNT_ID:policy/ArgoCD-SecretsManager-ReadOnly
+
+# -----------------------------------------------------------------------------
+# STEP 4: Annotate the ServiceAccount
+# -----------------------------------------------------------------------------
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: argocd-repo-server
+  namespace: argocd
+  annotations:
+    eks.amazonaws.com/role-arn: arn:aws:iam::ACCOUNT_ID:role/ArgoCD-Vault-Plugin-Role
+
+# -----------------------------------------------------------------------------
+# STEP 5: Simplified Secret (no AWS credentials needed!)
+# -----------------------------------------------------------------------------
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: argocd-vault-plugin-credentials
+  namespace: argocd
+type: Opaque
+stringData:
+  AVP_TYPE: "awssecretsmanager"
+  AWS_REGION: "ap-south-1"
+  # No AWS_ACCESS_KEY_ID or AWS_SECRET_ACCESS_KEY needed!
+  # The SDK will automatically use IRSA credentials

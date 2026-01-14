@@ -1,0 +1,87 @@
+# ============================================================
+# Full App Example - Deployment with Secrets
+# ============================================================
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: demo-app
+  namespace: demo-app
+  labels:
+    app: demo-app
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: demo-app
+  template:
+    metadata:
+      labels:
+        app: demo-app
+    spec:
+      imagePullSecrets:
+        - name: demo-app-docker-registry
+      containers:
+        - name: demo-app
+          image: nginx:latest
+          ports:
+            - containerPort: 80
+          env:
+            # From Secret (recommended approach)
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: demo-app-secrets
+                  key: DB_PASSWORD
+            - name: API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: demo-app-secrets
+                  key: API_KEY
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: demo-app-secrets
+                  key: JWT_SECRET
+
+            # Direct injection (alternative - less secure, visible in pod spec)
+            # - name: DIRECT_SECRET
+            #   value: <path:secret/data/demo-app/config#direct_value>
+
+            # Non-secret config
+            - name: APP_NAME
+              value: "demo-app"
+            - name: APP_ENV
+              value: "production"
+
+          volumeMounts:
+            - name: config
+              mountPath: /app/config
+              readOnly: true
+
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 10
+            periodSeconds: 10
+
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 5
+            periodSeconds: 5
+
+      volumes:
+        - name: config
+          configMap:
+            name: demo-app-config

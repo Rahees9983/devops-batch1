@@ -1,0 +1,53 @@
+# ApplicationSet Example 5: Matrix Generator
+# Combines two generators to create a cartesian product
+# Example: 3 argocd-applicationset-demo/apps x 3 environments = 9 Applications!
+
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: matrix-generator-demo
+  namespace: argocd
+spec:
+  generators:
+  # Matrix generator - combines generators
+  - matrix:
+      generators:
+      # First generator: Git directories (argocd-applicationset-demo/apps)
+      - git:
+          repoURL: https://github.com/Rahees9983/babaer-temp.git
+          revision: dev
+          directories:
+          - path: argocd-applicationset-demo/apps/*
+      # Second generator: List of environments
+      - list:
+          elements:
+          - environment: dev
+            namespace-suffix: dev
+          - environment: staging
+            namespace-suffix: staging
+          - environment: prod
+            namespace-suffix: prod
+  template:
+    metadata:
+      # Creates: app-blue-dev, app-blue-staging, app-blue-prod, etc.
+      name: '{{path.basename}}-{{environment}}'
+      labels:
+        app.kubernetes.io/name: '{{path.basename}}'
+        environment: '{{environment}}'
+        generator: matrix
+    spec:
+      project: default
+      source:
+        repoURL: https://github.com/Rahees9983/babaer-temp.git
+        targetRevision: dev
+        path: '{{path}}'
+      destination:
+        server: https://kubernetes.default.svc
+        # Creates: app-blue-dev, app-green-staging, etc.
+        namespace: '{{path.basename}}-{{namespace-suffix}}'
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+        - CreateNamespace=true
