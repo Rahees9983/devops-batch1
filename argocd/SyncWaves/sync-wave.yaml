@@ -1,24 +1,197 @@
-apiVersion: batch/v1
-kind: Job
+# Wave -1: Namespace (create first)
+apiVersion: v1
+kind: Namespace
 metadata:
-  name: db-migrate
+  name: vm-metrics
   annotations:
     argocd.argoproj.io/hook: Skip #PreSync
     argocd.argoproj.io/hook-delete-policy: HookSucceeded
     argocd.argoproj.io/sync-wave: "-1"
+---
+# Wave 0: ConfigMap and Secret (before app starts)
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: vm-metrics-config
+  namespace: vm-metrics
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+data:
+  APP_ENV: "production"
+  LOG_LEVEL: "info"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: vm-metrics-secret
+  namespace: vm-metrics
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+type: Opaque
+stringData:
+  DB_PASSWORD: "mysecretpassword"
+---
+# Wave 1: PersistentVolumeClaim (storage before database)
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: vm-metrics-pvc
+  namespace: vm-metrics
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
 spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: alicloud-disk-topology-alltype
+  resources:
+    requests:
+      storage: 22Gi
+---
+# Wave 2: Database Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vm-metrics-db
+  namespace: vm-metrics
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: vm-metrics-db
   template:
+    metadata:
+      labels:
+        app: vm-metrics-db
     spec:
       containers:
-      - name: postgresql-client
-        # Using alpine for a lightweight shell environment
-        image: alpine:latest
-        # The command executes the echo first, then sleeps for 30 seconds
-        command: ["/bin/sh", "-c"]
-        args:
-          - |
-            echo "db migrated successfully"
-            sleep 30
-      restartPolicy: Never
-  # backoffLimit: 0 ensures the job doesn't retry if it fails once
-  backoffLimit: 0 
+      - name: postgres
+        image: postgres:15
+        ports:
+        - containerPort: 5432
+        env:
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: vm-metrics-secret
+              key: DB_PASSWORD
+        volumeMounts:
+        - name: data
+          mountPath: /var/lib/postgresql/data
+      volumes:
+      - name: data
+        persistentVolumeClaim:
+          claimName: vm-metrics-pvc
+---
+# Wave 2: Database Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: vm-metrics-db-svc
+  namespace: vm-metrics
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  ports:
+  - port: 5432
+    targetPort: 5432
+  selector:
+    app: vm-metrics-db
+---
+# Wave 3: Application Deployment (after database is ready)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vm-metrics-app
+  namespace: vm-metrics
+  labels:
+    app: vm-metrics-app
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: vm-metrics-app
+  template:
+    metadata:
+      labels:
+        app: vm-metrics-app
+    spec:
+      containers:
+      - name: vm-metrics-app
+        image: rahees9983/vm-metrics-app:with-gui
+        ports:
+        - containerPort: 5000
+        envFrom:
+        - configMapRef:
+            name: vm-metrics-config
+        env:
+        - name: DB_HOST
+          value: "vm-metrics-db-svc"
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: vm-metrics-secret
+              key: DB_PASSWORD
+---
+# Wave 3: Application Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: vm-metrics-app-svc
+  namespace: vm-metrics
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+spec:
+  type: ClusterIP
+  ports:
+  - port: 5000
+    targetPort: 5000
+  selector:
+    app: vm-metrics-app
+---
+# Wave 4: Ingress (after app is running)
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: vm-metrics-ingress
+  namespace: vm-metrics
+  annotations:
+    argocd.argoproj.io/sync-wave: "4"
+spec:
+  rules:
+  - host: vm-metrics.example.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: vm-metrics-app-svc
+            port:
+              number: 5000
+# ---
+# # Wave 5: HorizontalPodAutoscaler (after app is stable)
+# apiVersion: autoscaling/v2
+# kind: HorizontalPodAutoscaler
+# metadata:
+#   name: vm-metrics-hpa
+#   namespace: vm-metrics
+#   annotations:
+#     argocd.argoproj.io/sync-wave: "5"
+# spec:
+#   scaleTargetRef:
+#     apiVersion: apps/v1
+#     kind: Deployment
+#     name: vm-metrics-app
+#   minReplicas: 2
+#   maxReplicas: 10
+#   metrics:
+#   - type: Resource
+#     resource:
+#       name: cpu
+#       target:
+#         type: Utilization
+#         averageUtilization: 70
