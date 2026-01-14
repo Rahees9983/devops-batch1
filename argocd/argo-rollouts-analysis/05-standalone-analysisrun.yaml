@@ -1,0 +1,17 @@
+# Standalone AnalysisRun - Run analysis independently (not as part of rollout)
+# Useful for testing your AnalysisTemplate before using it in a Rollout
+
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisRun
+metadata:
+  name: manual-analysis-run
+  namespace: default
+spec:
+  # Reference the AnalysisTemplate
+  analysisTemplateRef:
+    name: http-success-analysis
+
+  # Pass arguments to the template
+  args:
+  - name: service-name
+    value: canary-stable-svc

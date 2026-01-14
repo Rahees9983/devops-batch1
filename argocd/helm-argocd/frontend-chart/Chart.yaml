@@ -1,0 +1,11 @@
+apiVersion: v2
+name: frontend
+description: A Helm chart for frontend application deployment created by Sultan Mirza!!!
+type: application
+version: 1.0.0
+appVersion: "v1"
+keywords:
+  - frontend
+  - webapp
+maintainers:
+  - name: Rahees Khan

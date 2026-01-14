@@ -1,0 +1,60 @@
+# Simple HTTP Success Analysis Template
+# Checks if the canary service returns successful responses
+
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: http-success-analysis
+  namespace: default
+spec:
+  args:
+  - name: service-name
+
+  metrics:
+  - name: http-success-rate
+    # Run check every 10 seconds
+    interval: 10s
+    # Total analysis duration: run for 1 minute
+    count: 6
+    # Success if curl returns 200
+    successCondition: result.exitCode == 0
+    # Fail after 2 consecutive failures
+    failureLimit: 2
+    provider:
+      job:
+        spec:
+          backoffLimit: 0
+          template:
+            spec:
+              restartPolicy: Never
+              containers:
+              - name: http-check
+                image: curlimages/curl:latest
+                command:
+                - sh
+                - -c
+                - |
+                  echo "Checking http://{{args.service-name}}.default.svc.cluster.local"
+
+                  # Make 5 requests and check success rate
+                  success=0
+                  total=5
+
+                  for i in $(seq 1 $total); do
+                    response=$(curl -s -o /dev/null -w "%{http_code}" http://{{args.service-name}}.default.svc.cluster.local)
+                    if [ "$response" = "200" ]; then
+                      success=$((success + 1))
+                    fi
+                    sleep 1
+                  done
+
+                  echo "Success: $success / $total"
+
+                  # Require at least 80% success rate
+                  if [ $success -ge 4 ]; then
+                    echo "PASSED: Success rate is good"
+                    exit 0
+                  else
+                    echo "FAILED: Success rate too low"
+                    exit 1
+                  fi

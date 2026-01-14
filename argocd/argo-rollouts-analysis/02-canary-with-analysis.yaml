@@ -1,0 +1,68 @@
+# Canary Rollout with Analysis
+# Automatically runs analysis during canary deployment
+
+apiVersion: argoproj.io/v1alpha1
+kind: Rollout
+metadata:
+  name: canary-with-analysis
+  namespace: default
+  labels:
+    app: canary-analysis-demo
+spec:
+  replicas: 5
+  revisionHistoryLimit: 2
+  selector:
+    matchLabels:
+      app: canary-analysis-demo
+  template:
+    metadata:
+      labels:
+        app: canary-analysis-demo
+    spec:
+      containers:
+      - name: app
+        image: rahees9983/deployment-strategy-app:v1
+        ports:
+        - containerPort: 8080
+          name: http
+        env:
+        - name: VERSION
+          value: "v1"
+  strategy:
+    canary:
+      # Service for stable version
+      stableService: canary-stable-svc
+      # Service for canary version
+      canaryService: canary-canary-svc
+
+      steps:
+      # Step 1: Send 20% traffic to canary
+      - setWeight: 20
+
+      # Step 2: Run analysis for 1 minute
+      - analysis:
+          templates:
+          - templateName: http-success-analysis
+          args:
+          - name: service-name
+            value: canary-canary-svc
+
+      # Step 3: If analysis passed, increase to 50%
+      - setWeight: 50
+
+      # Step 4: Run analysis again
+      - analysis:
+          templates:
+          - templateName: http-success-analysis
+          args:
+          - name: service-name
+            value: canary-canary-svc
+
+      # Step 5: Increase to 80%
+      - setWeight: 80
+
+      # Step 6: Pause for manual verification (optional)
+      - pause:
+          duration: 30s
+
+      # After all steps pass: 100% traffic goes to new version

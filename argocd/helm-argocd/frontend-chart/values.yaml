@@ -1,0 +1,87 @@
+# Default values for frontend chart
+replicaCount: 5
+
+image:
+  repository: rahees9983/deployment-strategy-app
+  tag: v1
+  pullPolicy: IfNotPresent
+
+nameOverride: ""
+fullnameOverride: "rahees-fullname-over-1"
+
+serviceAccount:
+  create: false
+  name: frontend-sa
+  automountServiceAccountToken: true
+
+podLabels:
+  app: frontend
+  version: v1
+
+podSecurityContext:
+  runAsUser: 1000
+  runAsGroup: 3000
+  fsGroup: 2000
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: false
+  runAsNonRoot: true
+  capabilities:
+    drop:
+    - ALL
+
+service:
+  type: NodePort
+  port: 8080
+  targetPort: 8080
+  nodePort: 30080
+
+strategy:
+  type: RollingUpdate
+  rollingUpdate:
+    maxSurge: 25%
+    maxUnavailable: 25%
+
+configMap:
+  create: true
+  data:
+    app.properties: |
+      app.name=frontend
+      app.environment=production
+      app.log.level=info
+    config.json: |
+      {
+        "server": {
+          "port": 8080,
+          "host": "0.0.0.0"
+        },
+        "features": {
+          "enableMetrics": true,
+          "enableHealthCheck": true
+        }
+      }
+
+volumeMounts:
+  - name: config-volume
+    mountPath: /etc/config
+    readOnly: true
+
+volumes:
+  - name: config-volume
+    configMap:
+      name: frontend-config
+
+resources: {}
+  # limits:
+  #   cpu: 100m
+  #   memory: 128Mi
+  # requests:
+  #   cpu: 100m
+  #   memory: 128Mi
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity: {}

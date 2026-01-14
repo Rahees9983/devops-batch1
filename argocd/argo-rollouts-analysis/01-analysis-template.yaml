@@ -1,0 +1,70 @@
+# AnalysisTemplate - Defines HOW to analyze the deployment
+# This is a reusable template that can be referenced by multiple Rollouts
+
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: success-rate-analysis
+  namespace: default
+spec:
+  # Arguments that can be passed from the Rollout
+  args:
+  - name: service-name
+  - name: namespace
+    value: default
+
+  # Metrics to evaluate
+  metrics:
+  # Metric 1: Simple web check - is the service responding?
+  - name: web-check
+    # Run every 30 seconds
+    interval: 30s
+    # Number of consecutive successful checks needed
+    successCondition: result == "OK"
+    # Number of failures before marking as failed
+    failureLimit: 3
+    provider:
+      web:
+        # Check if the service returns 200 OK
+        url: "http://{{args.service-name}}.{{args.namespace}}.svc.cluster.local/health"
+        timeoutSeconds: 10
+        # Expected response
+        jsonPath: "{$}"
+---
+# AnalysisTemplate 2: Using Job provider (custom script)
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: custom-check-analysis
+  namespace: default
+spec:
+  args:
+  - name: service-name
+  metrics:
+  - name: custom-health-check
+    interval: 30s
+    successCondition: result.exitCode == 0
+    failureLimit: 2
+    provider:
+      job:
+        spec:
+          backoffLimit: 0
+          template:
+            spec:
+              restartPolicy: Never
+              containers:
+              - name: curl-check
+                image: curlimages/curl:latest
+                command:
+                - sh
+                - -c
+                - |
+                  # Check if service is responding
+                  response=$(curl -s -o /dev/null -w "%{http_code}" http://{{args.service-name}}.default.svc.cluster.local)
+                  if [ "$response" = "200" ]; then
+                    echo "Service is healthy"
+                    exit 0
+                  else
+                    echo "Service returned $response"
+                    exit 1
+                  fi

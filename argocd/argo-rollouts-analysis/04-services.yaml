@@ -1,0 +1,35 @@
+# Services for Canary with Analysis demo
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: canary-stable-svc
+  namespace: default
+  labels:
+    app: canary-analysis-demo
+spec:
+  type: LoadBalancer
+  selector:
+    app: canary-analysis-demo
+  ports:
+  - port: 80
+    targetPort: 8080
+    protocol: TCP
+    name: http
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: canary-canary-svc
+  namespace: default
+  labels:
+    app: canary-analysis-demo
+spec:
+  type: ClusterIP
+  selector:
+    app: canary-analysis-demo
+  ports:
+  - port: 80
+    targetPort: 8080
+    protocol: TCP
+    name: http
