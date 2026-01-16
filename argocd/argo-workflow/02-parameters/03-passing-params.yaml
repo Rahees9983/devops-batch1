@@ -1,0 +1,152 @@
+# ============================================================
+# Passing Parameters Between Steps
+# ============================================================
+# This workflow demonstrates a data pipeline where
+# each step passes its output to the next step
+#
+# Run: argo submit -n argo 03-passing-params.yaml --watch
+# ============================================================
+
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: passing-params-
+spec:
+  entrypoint: main
+
+  arguments:
+    parameters:
+      - name: initial-value
+        value: "10"
+
+  templates:
+    - name: main
+      steps:
+        # Step 1: Start with initial value
+        - - name: step1-double
+            template: math-operation
+            arguments:
+              parameters:
+                - name: input
+                  value: "{{workflow.parameters.initial-value}}"
+                - name: operation
+                  value: "double"
+
+        # Step 2: Use output from Step 1
+        - - name: step2-add-ten
+            template: math-operation
+            arguments:
+              parameters:
+                - name: input
+                  value: "{{steps.step1-double.outputs.parameters.result}}"
+                - name: operation
+                  value: "add-ten"
+
+        # Step 3: Use output from Step 2
+        - - name: step3-square
+            template: math-operation
+            arguments:
+              parameters:
+                - name: input
+                  value: "{{steps.step2-add-ten.outputs.parameters.result}}"
+                - name: operation
+                  value: "square"
+
+        # Step 4: Display final result
+        - - name: final-result
+            template: display-result
+            arguments:
+              parameters:
+                - name: original
+                  value: "{{workflow.parameters.initial-value}}"
+                - name: after-double
+                  value: "{{steps.step1-double.outputs.parameters.result}}"
+                - name: after-add
+                  value: "{{steps.step2-add-ten.outputs.parameters.result}}"
+                - name: final
+                  value: "{{steps.step3-square.outputs.parameters.result}}"
+
+    # Math operation template
+    - name: math-operation
+      inputs:
+        parameters:
+          - name: input
+          - name: operation
+      script:
+        image: python:3.9-alpine
+        command: [python]
+        source: |
+          value = int("{{inputs.parameters.input}}")
+          operation = "{{inputs.parameters.operation}}"
+
+          if operation == "double":
+              result = value * 2
+          elif operation == "add-ten":
+              result = value + 10
+          elif operation == "square":
+              result = value * value
+          else:
+              result = value
+
+          print(f"Operation: {operation}")
+          print(f"Input: {value}")
+          print(f"Result: {result}")
+
+          # Write result to file for output parameter
+          with open("/tmp/result.txt", "w") as f:
+              f.write(str(result))
+
+      outputs:
+        parameters:
+          - name: result
+            valueFrom:
+              path: /tmp/result.txt
+
+    # Display final results
+    - name: display-result
+      inputs:
+        parameters:
+          - name: original
+          - name: after-double
+          - name: after-add
+          - name: final
+      container:
+        image: alpine:latest
+        command: [sh, -c]
+        args:
+          - |
+            echo "============================================"
+            echo "        Parameter Passing Pipeline          "
+            echo "============================================"
+            echo ""
+            echo "Step 1: Original Value     = {{inputs.parameters.original}}"
+            echo "Step 2: After Double (x2)  = {{inputs.parameters.after-double}}"
+            echo "Step 3: After Add 10 (+10) = {{inputs.parameters.after-add}}"
+            echo "Step 4: After Square (^2)  = {{inputs.parameters.final}}"
+            echo ""
+            echo "============================================"
+
+# ============================================================
+# DATA FLOW VISUALIZATION:
+#
+#  Initial: 10
+#       │
+#       ▼
+#  ┌─────────────┐
+#  │   DOUBLE    │   10 × 2 = 20
+#  └──────┬──────┘
+#         │ result: 20
+#         ▼
+#  ┌─────────────┐
+#  │   ADD 10    │   20 + 10 = 30
+#  └──────┬──────┘
+#         │ result: 30
+#         ▼
+#  ┌─────────────┐
+#  │   SQUARE    │   30 × 30 = 900
+#  └──────┬──────┘
+#         │ result: 900
+#         ▼
+#  Final: 900
+#
+# ============================================================

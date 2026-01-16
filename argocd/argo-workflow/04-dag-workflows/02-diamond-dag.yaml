@@ -1,0 +1,216 @@
+# ============================================================
+# Diamond DAG - CI/CD Pipeline Example
+# ============================================================
+# A realistic CI/CD pipeline using DAG
+# Build → Test (Unit & Integration in parallel) → Deploy
+#
+# Run: argo submit -n argo 02-diamond-dag.yaml --watch
+# ============================================================
+
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: cicd-dag-
+spec:
+  entrypoint: ci-cd-pipeline
+
+  arguments:
+    parameters:
+      - name: app-name
+        value: "my-app"
+      - name: git-repo
+        value: "https://github.com/example/my-app"
+      - name: branch
+        value: "main"
+
+  templates:
+    - name: ci-cd-pipeline
+      dag:
+        tasks:
+          # Stage 1: Checkout code
+          - name: checkout
+            template: git-checkout
+            arguments:
+              parameters:
+                - name: repo
+                  value: "{{workflow.parameters.git-repo}}"
+                - name: branch
+                  value: "{{workflow.parameters.branch}}"
+
+          # Stage 2: Build application
+          - name: build
+            dependencies: [checkout]
+            template: build-app
+
+          # Stage 3a: Run unit tests (parallel)
+          - name: unit-tests
+            dependencies: [build]
+            template: run-tests
+            arguments:
+              parameters:
+                - name: test-type
+                  value: "unit"
+
+          # Stage 3b: Run integration tests (parallel)
+          - name: integration-tests
+            dependencies: [build]
+            template: run-tests
+            arguments:
+              parameters:
+                - name: test-type
+                  value: "integration"
+
+          # Stage 3c: Run linting (parallel)
+          - name: lint
+            dependencies: [build]
+            template: run-lint
+
+          # Stage 4: Security scan
+          - name: security-scan
+            dependencies: [unit-tests, integration-tests, lint]
+            template: security-scan
+
+          # Stage 5: Build Docker image
+          - name: docker-build
+            dependencies: [security-scan]
+            template: docker-build
+
+          # Stage 6: Deploy
+          - name: deploy
+            dependencies: [docker-build]
+            template: deploy-app
+
+    # Git checkout template
+    - name: git-checkout
+      inputs:
+        parameters:
+          - name: repo
+          - name: branch
+      container:
+        image: alpine:latest
+        command: [sh, -c]
+        args:
+          - |
+            echo "=== Git Checkout ==="
+            echo "Repository: {{inputs.parameters.repo}}"
+            echo "Branch: {{inputs.parameters.branch}}"
+            echo "Simulating git clone..."
+            sleep 2
+            echo "Checkout complete!"
+
+    # Build template
+    - name: build-app
+      container:
+        image: alpine:latest
+        command: [sh, -c]
+        args:
+          - |
+            echo "=== Building Application ==="
+            echo "Running npm install..."
+            sleep 2
+            echo "Running npm build..."
+            sleep 3
+            echo "Build successful!"
+
+    # Test template
+    - name: run-tests
+      inputs:
+        parameters:
+          - name: test-type
+      container:
+        image: alpine:latest
+        command: [sh, -c]
+        args:
+          - |
+            echo "=== Running {{inputs.parameters.test-type}} Tests ==="
+            sleep 3
+            echo "All {{inputs.parameters.test-type}} tests passed!"
+
+    # Lint template
+    - name: run-lint
+      container:
+        image: alpine:latest
+        command: [sh, -c]
+        args:
+          - |
+            echo "=== Running Linter ==="
+            sleep 2
+            echo "No linting errors found!"
+
+    # Security scan template
+    - name: security-scan
+      container:
+        image: alpine:latest
+        command: [sh, -c]
+        args:
+          - |
+            echo "=== Security Scan ==="
+            echo "Scanning for vulnerabilities..."
+            sleep 3
+            echo "No critical vulnerabilities found!"
+
+    # Docker build template
+    - name: docker-build
+      container:
+        image: alpine:latest
+        command: [sh, -c]
+        args:
+          - |
+            echo "=== Building Docker Image ==="
+            echo "Building {{workflow.parameters.app-name}}:latest"
+            sleep 3
+            echo "Image built successfully!"
+
+    # Deploy template
+    - name: deploy-app
+      container:
+        image: alpine:latest
+        command: [sh, -c]
+        args:
+          - |
+            echo "=== Deploying Application ==="
+            echo "Deploying {{workflow.parameters.app-name}} to production"
+            sleep 2
+            echo "Deployment successful!"
+            echo ""
+            echo "============================================"
+            echo "  CI/CD Pipeline Complete!"
+            echo "============================================"
+
+# ============================================================
+# CI/CD DAG STRUCTURE:
+#
+#                 ┌──────────────┐
+#                 │   Checkout   │
+#                 └──────┬───────┘
+#                        │
+#                        ▼
+#                 ┌──────────────┐
+#                 │    Build     │
+#                 └──────┬───────┘
+#                        │
+#          ┌─────────────┼─────────────┐
+#          │             │             │
+#          ▼             ▼             ▼
+#   ┌────────────┐ ┌────────────┐ ┌─────────┐
+#   │ Unit Tests │ │ Int. Tests │ │  Lint   │
+#   └─────┬──────┘ └─────┬──────┘ └────┬────┘
+#         │              │             │
+#         └──────────────┼─────────────┘
+#                        │
+#                        ▼
+#                ┌───────────────┐
+#                │ Security Scan │
+#                └───────┬───────┘
+#                        │
+#                        ▼
+#                ┌───────────────┐
+#                │ Docker Build  │
+#                └───────┬───────┘
+#                        │
+#                        ▼
+#                ┌───────────────┐
+#                │    Deploy     │
+#                └───────────────┘
+#
+# ============================================================

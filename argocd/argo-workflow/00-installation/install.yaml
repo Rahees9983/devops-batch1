@@ -1,0 +1,125 @@
+# Argo Workflows Installation - Namespace Scoped
+# This is a simplified version for learning purposes
+# For production, use the official install.yaml from GitHub releases
+
+---
+# Namespace
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: argo
+
+---
+# ServiceAccount for Argo Workflow Controller
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: argo
+  namespace: argo
+
+---
+# ServiceAccount for running workflows
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: argo-workflow
+  namespace: argo
+
+---
+# ClusterRole for workflow controller
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: argo-workflow-controller
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "pods/exec", "pods/log"]
+    verbs: ["create", "get", "list", "watch", "update", "patch", "delete"]
+  - apiGroups: [""]
+    resources: ["configmaps", "secrets"]
+    verbs: ["get", "watch", "list"]
+  - apiGroups: [""]
+    resources: ["persistentvolumeclaims"]
+    verbs: ["create", "delete", "get"]
+  - apiGroups: ["argoproj.io"]
+    resources: ["workflows", "workflows/finalizers", "workflowtasksets", "workflowtasksets/finalizers"]
+    verbs: ["get", "list", "watch", "update", "patch", "delete", "create"]
+  - apiGroups: ["argoproj.io"]
+    resources: ["workflowtemplates", "workflowtemplates/finalizers", "clusterworkflowtemplates", "clusterworkflowtemplates/finalizers"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["argoproj.io"]
+    resources: ["cronworkflows", "cronworkflows/finalizers"]
+    verbs: ["get", "list", "watch", "update", "patch", "delete"]
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["create", "patch"]
+  - apiGroups: [""]
+    resources: ["serviceaccounts"]
+    verbs: ["get", "list"]
+  - apiGroups: ["policy"]
+    resources: ["poddisruptionbudgets"]
+    verbs: ["create", "get", "delete"]
+
+---
+# ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: argo-workflow-controller
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: argo-workflow-controller
+subjects:
+  - kind: ServiceAccount
+    name: argo
+    namespace: argo
+
+---
+# Role for workflow execution
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: argo-workflow-role
+  namespace: argo
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "watch", "patch"]
+  - apiGroups: [""]
+    resources: ["pods/log"]
+    verbs: ["get", "watch"]
+  - apiGroups: ["argoproj.io"]
+    resources: ["workflows"]
+    verbs: ["get", "watch"]
+
+---
+# RoleBinding for workflow execution
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: argo-workflow-binding
+  namespace: argo
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: argo-workflow-role
+subjects:
+  - kind: ServiceAccount
+    name: argo-workflow
+    namespace: argo
+
+---
+# ConfigMap for workflow controller
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: workflow-controller-configmap
+  namespace: argo
+data:
+  # Executor image
+  containerRuntimeExecutor: emissary
+  # Default workflow ServiceAccount
+  workflowDefaults: |
+    spec:
+      serviceAccountName: argo-workflow

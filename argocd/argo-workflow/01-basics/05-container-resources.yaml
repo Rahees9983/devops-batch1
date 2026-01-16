@@ -1,0 +1,120 @@
+# ============================================================
+# Container Resources & Configuration
+# ============================================================
+# This workflow shows how to configure container resources
+# Including CPU, memory, environment variables, etc.
+#
+# NOTE: Resource limits are OPTIONAL. If you have limited
+# cluster resources, you can remove the 'resources' section.
+#
+# Run: argo submit -n argo 05-container-resources.yaml --watch
+# ============================================================
+
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: container-resources-
+spec:
+  entrypoint: main
+
+  templates:
+    - name: main
+      steps:
+        - - name: resource-example
+            template: configured-container
+
+    - name: configured-container
+      container:
+        image: alpine:latest
+        command: [sh, -c]
+        args:
+          - |
+            echo "=== Container Configuration Demo ==="
+            echo ""
+            echo "Environment Variables:"
+            echo "  APP_NAME: $APP_NAME"
+            echo "  ENVIRONMENT: $ENVIRONMENT"
+            echo "  LOG_LEVEL: $LOG_LEVEL"
+            echo ""
+            echo "System Info:"
+            echo "  Hostname: $(hostname)"
+            echo "  Working Directory: $(pwd)"
+            echo ""
+            echo "File Contents:"
+            cat /config/message.txt
+            echo ""
+            echo "=== Done ==="
+
+        # Environment variables
+        env:
+          - name: APP_NAME
+            value: "my-argo-app"
+          - name: ENVIRONMENT
+            value: "development"
+          - name: LOG_LEVEL
+            value: "DEBUG"
+          # From field reference (pod metadata)
+          - name: POD_NAME
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.name
+          - name: POD_NAMESPACE
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.namespace
+
+        # Resource requests and limits (OPTIONAL - remove if cluster has limited resources)
+        # resources:
+        #   requests:
+        #     memory: "64Mi"      # Minimum memory
+        #     cpu: "100m"         # Minimum CPU (100 millicores = 0.1 CPU)
+        #   limits:
+        #     memory: "128Mi"     # Maximum memory
+        #     cpu: "200m"         # Maximum CPU
+
+        # Working directory
+        workingDir: /app
+
+        # Volume mounts
+        volumeMounts:
+          - name: config-volume
+            mountPath: /config
+
+      # Volumes for this template
+      volumes:
+        - name: config-volume
+          configMap:
+            name: workflow-config
+            items:
+              - key: message
+                path: message.txt
+
+---
+# ConfigMap used by the workflow
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: workflow-config
+data:
+  message: |
+    Hello from ConfigMap!
+    This file was mounted from a ConfigMap.
+
+# ============================================================
+# RESOURCE UNITS:
+#
+# CPU:
+#   - 1 = 1 vCPU core
+#   - 100m = 0.1 vCPU (100 millicores)
+#   - 500m = 0.5 vCPU
+#
+# Memory:
+#   - Ki = Kibibytes (1024 bytes)
+#   - Mi = Mebibytes (1024 Ki)
+#   - Gi = Gibibytes (1024 Mi)
+#
+# BEST PRACTICES:
+#   - Always set resource requests for scheduling
+#   - Set limits to prevent runaway containers
+#   - requests <= limits
+# ============================================================

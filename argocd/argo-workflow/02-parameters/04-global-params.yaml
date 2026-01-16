@@ -1,0 +1,127 @@
+# ============================================================
+# Global Parameters & Built-in Variables
+# ============================================================
+# This workflow demonstrates workflow-level parameters
+# and built-in Argo variables
+#
+# Run: argo submit -n argo 04-global-params.yaml --watch
+# ============================================================
+
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: global-params-
+  labels:
+    app: demo-workflow
+spec:
+  entrypoint: main
+
+  # Global workflow parameters
+  arguments:
+    parameters:
+      - name: environment
+        value: "development"
+      - name: app-name
+        value: "my-application"
+      - name: version
+        value: "1.0.0"
+
+  templates:
+    - name: main
+      steps:
+        - - name: show-globals
+            template: display-variables
+
+        - - name: task-a
+            template: worker
+            arguments:
+              parameters:
+                - name: task-id
+                  value: "A"
+          - name: task-b
+            template: worker
+            arguments:
+              parameters:
+                - name: task-id
+                  value: "B"
+
+    # Template showing all available variables
+    - name: display-variables
+      container:
+        image: alpine:latest
+        command: [sh, -c]
+        args:
+          - |
+            echo "============================================"
+            echo "     Argo Workflow Built-in Variables       "
+            echo "============================================"
+            echo ""
+            echo "=== Workflow Info ==="
+            echo "workflow.name:       {{workflow.name}}"
+            echo "workflow.namespace:  {{workflow.namespace}}"
+            echo "workflow.uid:        {{workflow.uid}}"
+            echo ""
+            echo "=== Timing ==="
+            echo "workflow.creationTimestamp: {{workflow.creationTimestamp}}"
+            echo ""
+            echo "=== Global Parameters ==="
+            echo "environment: {{workflow.parameters.environment}}"
+            echo "app-name:    {{workflow.parameters.app-name}}"
+            echo "version:     {{workflow.parameters.version}}"
+            echo ""
+            echo "============================================"
+
+    # Worker template that uses global parameters
+    - name: worker
+      inputs:
+        parameters:
+          - name: task-id
+      container:
+        image: alpine:latest
+        # Using environment variables from global params
+        env:
+          - name: ENVIRONMENT
+            value: "{{workflow.parameters.environment}}"
+          - name: APP_NAME
+            value: "{{workflow.parameters.app-name}}"
+          - name: VERSION
+            value: "{{workflow.parameters.version}}"
+          - name: WORKFLOW_NAME
+            value: "{{workflow.name}}"
+        command: [sh, -c]
+        args:
+          - |
+            echo "=== Worker Task {{inputs.parameters.task-id}} ==="
+            echo "Environment: $ENVIRONMENT"
+            echo "App Name: $APP_NAME"
+            echo "Version: $VERSION"
+            echo "Workflow: $WORKFLOW_NAME"
+            echo "=== Done ==="
+
+# ============================================================
+# BUILT-IN VARIABLES REFERENCE:
+#
+# Workflow Variables:
+#   {{workflow.name}}               - Workflow name
+#   {{workflow.namespace}}          - Namespace
+#   {{workflow.uid}}                - Unique ID
+#   {{workflow.creationTimestamp}}  - Creation time
+#   {{workflow.parameters.X}}       - Global parameter X
+#
+# Pod Variables:
+#   {{pod.name}}                    - Pod name
+#
+# Step Variables (in steps template):
+#   {{steps.step-name.outputs.parameters.X}}
+#   {{steps.step-name.outputs.result}}
+#   {{steps.step-name.status}}
+#
+# Task Variables (in DAG template):
+#   {{tasks.task-name.outputs.parameters.X}}
+#   {{tasks.task-name.outputs.result}}
+#
+# Item Variables (in loops):
+#   {{item}}                        - Current item
+#   {{item.name}}                   - Item property
+#
+# ============================================================

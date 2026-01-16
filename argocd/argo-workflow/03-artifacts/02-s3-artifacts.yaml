@@ -1,0 +1,171 @@
+# ============================================================
+# S3 Artifacts (MinIO or AWS S3)
+# ============================================================
+# This workflow demonstrates using S3 for artifact storage
+# Useful for large files and persistent storage
+#
+# Prerequisites:
+#   1. Install MinIO or configure AWS S3
+#   2. Create the artifact-repository secret
+#
+# Run: argo submit -n argo 02-s3-artifacts.yaml --watch
+# ============================================================
+
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: s3-artifacts-
+spec:
+  entrypoint: main
+
+  # Configure artifact repository for this workflow
+  artifactRepositoryRef:
+    configMap: artifact-repositories
+    key: default-v1
+
+  templates:
+    - name: main
+      steps:
+        # Step 1: Generate and upload to S3
+        - - name: upload-artifact
+            template: s3-producer
+
+        # Step 2: Download from S3 and process
+        - - name: download-artifact
+            template: s3-consumer
+            arguments:
+              artifacts:
+                - name: input
+                  from: "{{steps.upload-artifact.outputs.artifacts.report}}"
+
+    # Template that produces S3 artifact
+    - name: s3-producer
+      container:
+        image: alpine:latest
+        command: [sh, -c]
+        args:
+          - |
+            echo "Creating report..."
+            mkdir -p /tmp/reports
+
+            cat > /tmp/reports/report.json << EOF
+            {
+              "title": "Daily Report",
+              "generated": "$(date -Iseconds)",
+              "metrics": {
+                "users": 1250,
+                "orders": 340,
+                "revenue": 45000
+              },
+              "status": "success"
+            }
+            EOF
+
+            echo "Report created:"
+            cat /tmp/reports/report.json
+
+      outputs:
+        artifacts:
+          - name: report
+            path: /tmp/reports/report.json
+            # S3 configuration (can also be in configmap)
+            s3:
+              bucket: argo-artifacts
+              key: "reports/{{workflow.name}}/report.json"
+              endpoint: minio:9000
+              insecure: true
+              accessKeySecret:
+                name: argo-artifacts-secret
+                key: accessKey
+              secretKeySecret:
+                name: argo-artifacts-secret
+                key: secretKey
+
+    # Template that consumes S3 artifact
+    - name: s3-consumer
+      inputs:
+        artifacts:
+          - name: input
+            path: /tmp/input.json
+      container:
+        image: python:3.9-alpine
+        command: [python, -c]
+        args:
+          - |
+            import json
+
+            print("Reading artifact from S3...")
+            with open('/tmp/input.json', 'r') as f:
+                data = json.load(f)
+
+            print("=" * 40)
+            print(f"Title: {data['title']}")
+            print(f"Generated: {data['generated']}")
+            print(f"Users: {data['metrics']['users']}")
+            print(f"Orders: {data['metrics']['orders']}")
+            print(f"Revenue: ${data['metrics']['revenue']}")
+            print(f"Status: {data['status']}")
+            print("=" * 40)
+
+---
+# ============================================================
+# MinIO Installation (for local testing)
+# ============================================================
+# kubectl apply -f minio-deployment.yaml
+# ============================================================
+
+apiVersion: v1
+kind: Secret
+metadata:
+  name: argo-artifacts-secret
+  namespace: argo
+type: Opaque
+stringData:
+  accessKey: "minioadmin"
+  secretKey: "minioadmin"
+
+---
+# ConfigMap for artifact repository
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: artifact-repositories
+  namespace: argo
+data:
+  default-v1: |
+    s3:
+      bucket: argo-artifacts
+      endpoint: minio:9000
+      insecure: true
+      accessKeySecret:
+        name: argo-artifacts-secret
+        key: accessKey
+      secretKeySecret:
+        name: argo-artifacts-secret
+        key: secretKey
+
+# ============================================================
+# S3 ARTIFACT FLOW:
+#
+#  ┌─────────────────┐     ┌─────────────────┐
+#  │   s3-producer   │     │   S3 / MinIO    │
+#  │                 │     │                 │
+#  │ Creates file    │────►│ Uploads to:     │
+#  │ /tmp/report.json│     │ bucket/key      │
+#  └─────────────────┘     └────────┬────────┘
+#                                   │
+#                                   │ Downloaded
+#                                   │
+#  ┌─────────────────┐              │
+#  │   s3-consumer   │◄─────────────┘
+#  │                 │
+#  │ Reads file from │
+#  │ /tmp/input.json │
+#  └─────────────────┘
+#
+# Benefits of S3:
+#   - Persistent storage (survives pod deletion)
+#   - Large file support
+#   - Shareable across workflows
+#   - Can be accessed externally
+# ============================================================

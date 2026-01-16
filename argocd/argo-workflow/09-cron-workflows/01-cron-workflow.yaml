@@ -1,0 +1,213 @@
+# ============================================================
+# Cron Workflows - Scheduled Workflows
+# ============================================================
+# CronWorkflows run on a schedule (like Kubernetes CronJobs)
+#
+# Apply: kubectl apply -n argo -f 01-cron-workflow.yaml
+# List:  kubectl get cronworkflows -n argo
+# ============================================================
+
+apiVersion: argoproj.io/v1alpha1
+kind: CronWorkflow
+metadata:
+  name: daily-backup
+  namespace: argo
+spec:
+  # Cron schedule (every day at 2 AM)
+  schedule: "0 2 * * *"
+
+  # Timezone (default is UTC)
+  timezone: "Asia/Riyadh"
+
+  # How many completed workflows to keep
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+
+  # Concurrency policy: Allow, Forbid, Replace
+  concurrencyPolicy: "Forbid"
+
+  # Starting deadline (seconds)
+  startingDeadlineSeconds: 300
+
+  # Suspend the cron (set to true to pause)
+  suspend: false
+
+  # Workflow spec
+  workflowSpec:
+    entrypoint: backup-job
+    serviceAccountName: argo-workflow
+
+    templates:
+      - name: backup-job
+        steps:
+          - - name: backup-databases
+              template: backup-db
+          - - name: backup-files
+              template: backup-files
+          - - name: cleanup-old
+              template: cleanup
+          - - name: notify
+              template: send-notification
+
+      - name: backup-db
+        container:
+          image: alpine:latest
+          command: [sh, -c]
+          args:
+            - |
+              echo "=== Database Backup ==="
+              echo "Time: $(date)"
+              echo "Backing up PostgreSQL..."
+              sleep 2
+              echo "Backing up MongoDB..."
+              sleep 2
+              echo "Database backup complete!"
+
+      - name: backup-files
+        container:
+          image: alpine:latest
+          command: [sh, -c]
+          args:
+            - |
+              echo "=== File Backup ==="
+              echo "Backing up uploads folder..."
+              sleep 2
+              echo "Backing up config files..."
+              sleep 1
+              echo "File backup complete!"
+
+      - name: cleanup
+        container:
+          image: alpine:latest
+          command: [sh, -c]
+          args:
+            - |
+              echo "=== Cleanup Old Backups ==="
+              echo "Removing backups older than 30 days..."
+              sleep 1
+              echo "Cleanup complete!"
+
+      - name: send-notification
+        container:
+          image: alpine:latest
+          command: [sh, -c]
+          args:
+            - |
+              echo "=== Sending Notification ==="
+              echo "Backup job completed successfully"
+              echo "Sending email/Slack notification..."
+              echo "Done!"
+
+---
+# ============================================================
+# Example 2: Hourly Health Check
+# ============================================================
+
+apiVersion: argoproj.io/v1alpha1
+kind: CronWorkflow
+metadata:
+  name: hourly-health-check
+  namespace: argo
+spec:
+  # Every hour at minute 0
+  schedule: "0 * * * *"
+  timezone: "UTC"
+  successfulJobsHistoryLimit: 5
+  failedJobsHistoryLimit: 3
+  concurrencyPolicy: "Replace"
+
+  workflowSpec:
+    entrypoint: health-check
+    serviceAccountName: argo-workflow
+
+    templates:
+      - name: health-check
+        dag:
+          tasks:
+            - name: check-api
+              template: http-check
+              arguments:
+                parameters:
+                  - name: service
+                    value: "API"
+                  - name: url
+                    value: "http://api-service:8080/health"
+
+            - name: check-frontend
+              template: http-check
+              arguments:
+                parameters:
+                  - name: service
+                    value: "Frontend"
+                  - name: url
+                    value: "http://frontend-service:3000/health"
+
+            - name: check-database
+              template: db-check
+
+            - name: report
+              dependencies: [check-api, check-frontend, check-database]
+              template: generate-report
+
+      - name: http-check
+        inputs:
+          parameters:
+            - name: service
+            - name: url
+        container:
+          image: curlimages/curl:latest
+          command: [sh, -c]
+          args:
+            - |
+              echo "Checking {{inputs.parameters.service}}..."
+              echo "URL: {{inputs.parameters.url}}"
+              # In real scenario: curl -sf {{inputs.parameters.url}}
+              echo "Status: OK"
+
+      - name: db-check
+        container:
+          image: alpine:latest
+          command: [sh, -c]
+          args:
+            - |
+              echo "Checking database connectivity..."
+              # In real scenario: pg_isready or similar
+              echo "Database: OK"
+
+      - name: generate-report
+        container:
+          image: alpine:latest
+          command: [sh, -c]
+          args:
+            - |
+              echo "=== Health Check Report ==="
+              echo "Time: $(date)"
+              echo "API: OK"
+              echo "Frontend: OK"
+              echo "Database: OK"
+              echo "=========================="
+
+# ============================================================
+# CRON SYNTAX:
+#
+# ┌───────────── minute (0 - 59)
+# │ ┌───────────── hour (0 - 23)
+# │ │ ┌───────────── day of the month (1 - 31)
+# │ │ │ ┌───────────── month (1 - 12)
+# │ │ │ │ ┌───────────── day of the week (0 - 6)
+# │ │ │ │ │
+# * * * * *
+#
+# Examples:
+#   "0 2 * * *"     - Every day at 2 AM
+#   "*/15 * * * *"  - Every 15 minutes
+#   "0 0 * * 0"     - Every Sunday at midnight
+#   "0 9 * * 1-5"   - Weekdays at 9 AM
+#   "0 0 1 * *"     - First day of every month
+#
+# CONCURRENCY POLICIES:
+#   Allow   - Allow concurrent runs
+#   Forbid  - Skip if previous is still running
+#   Replace - Terminate previous and start new
+#
+# ============================================================

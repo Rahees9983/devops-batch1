@@ -1,0 +1,450 @@
+# ============================================================
+# Generate and Consume Artifacts
+# ============================================================
+# Artifacts allow passing files/data between workflow steps
+# Producer generates artifacts, Consumer uses them
+#
+# Run: argo submit -n argo 03-generate-consume-artifacts.yaml --watch
+# ============================================================
+
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: generate-consume-artifacts-
+spec:
+  entrypoint: main
+  serviceAccountName: argo-workflow
+
+  templates:
+    - name: main
+      steps:
+        # Step 1: Generate artifacts
+        - - name: generate
+            template: generate-artifacts
+
+        # Step 2: Consume artifacts (uses output from generate)
+        - - name: consume
+            template: consume-artifacts
+            arguments:
+              artifacts:
+                - name: input-data
+                  from: "{{steps.generate.outputs.artifacts.output-data}}"
+                - name: input-config
+                  from: "{{steps.generate.outputs.artifacts.output-config}}"
+
+        # Step 3: Process and produce new artifact
+        - - name: process
+            template: process-artifacts
+            arguments:
+              artifacts:
+                - name: data-to-process
+                  from: "{{steps.generate.outputs.artifacts.output-data}}"
+
+        # Step 4: Final consumption
+        - - name: final
+            template: final-consumer
+            arguments:
+              artifacts:
+                - name: processed-data
+                  from: "{{steps.process.outputs.artifacts.processed-output}}"
+
+    # ============================================================
+    # GENERATOR: Creates artifacts for downstream steps
+    # ============================================================
+    - name: generate-artifacts
+      container:
+        image: alpine:latest
+        command: [sh, -c]
+        args:
+          - |
+            echo "============================================"
+            echo "  GENERATING ARTIFACTS"
+            echo "============================================"
+
+            # Generate data file
+            echo "Creating data.json..."
+            cat > /tmp/data.json << 'EOF'
+            {
+              "users": [
+                {"id": 1, "name": "Alice", "role": "admin"},
+                {"id": 2, "name": "Bob", "role": "user"},
+                {"id": 3, "name": "Charlie", "role": "user"}
+              ],
+              "metadata": {
+                "generated_at": "$(date -Iseconds)",
+                "version": "1.0.0"
+              }
+            }
+            EOF
+
+            # Generate config file
+            echo "Creating config.yaml..."
+            cat > /tmp/config.yaml << 'EOF'
+            database:
+              host: localhost
+              port: 5432
+              name: myapp
+            cache:
+              enabled: true
+              ttl: 3600
+            logging:
+              level: INFO
+              format: json
+            EOF
+
+            echo ""
+            echo "Generated files:"
+            ls -la /tmp/data.json /tmp/config.yaml
+            echo ""
+            echo "data.json content:"
+            cat /tmp/data.json
+            echo ""
+            echo "config.yaml content:"
+            cat /tmp/config.yaml
+            echo "============================================"
+
+      # OUTPUT ARTIFACTS - Files to pass to next steps
+      outputs:
+        artifacts:
+          - name: output-data
+            path: /tmp/data.json
+          - name: output-config
+            path: /tmp/config.yaml
+
+    # ============================================================
+    # CONSUMER: Uses artifacts from generator
+    # ============================================================
+    - name: consume-artifacts
+      inputs:
+        artifacts:
+          - name: input-data
+            path: /tmp/received-data.json
+          - name: input-config
+            path: /tmp/received-config.yaml
+
+      container:
+        image: alpine:latest
+        command: [sh, -c]
+        args:
+          - |
+            echo "============================================"
+            echo "  CONSUMING ARTIFACTS"
+            echo "============================================"
+
+            echo "Received data.json:"
+            cat /tmp/received-data.json
+            echo ""
+
+            echo "Received config.yaml:"
+            cat /tmp/received-config.yaml
+            echo ""
+
+            echo "Files received at:"
+            ls -la /tmp/received-*
+            echo "============================================"
+
+    # ============================================================
+    # PROCESSOR: Consumes, transforms, and produces new artifact
+    # ============================================================
+    - name: process-artifacts
+      inputs:
+        artifacts:
+          - name: data-to-process
+            path: /tmp/input-data.json
+
+      container:
+        image: python:3.9-alpine
+        command: [python, -c]
+        args:
+          - |
+            import json
+
+            print("=" * 44)
+            print("  PROCESSING ARTIFACTS")
+            print("=" * 44)
+
+            # Read input artifact
+            with open('/tmp/input-data.json', 'r') as f:
+                data = json.load(f)
+
+            print(f"Input users: {len(data.get('users', []))}")
+
+            # Transform data
+            processed = {
+                "summary": {
+                    "total_users": len(data.get('users', [])),
+                    "admins": len([u for u in data.get('users', []) if u.get('role') == 'admin']),
+                    "regular_users": len([u for u in data.get('users', []) if u.get('role') == 'user'])
+                },
+                "user_names": [u['name'] for u in data.get('users', [])],
+                "processed": True
+            }
+
+            # Write output artifact
+            with open('/tmp/processed.json', 'w') as f:
+                json.dump(processed, f, indent=2)
+
+            print("Processed output:")
+            print(json.dumps(processed, indent=2))
+            print("=" * 44)
+
+      outputs:
+        artifacts:
+          - name: processed-output
+            path: /tmp/processed.json
+
+    # ============================================================
+    # FINAL CONSUMER: Uses processed artifact
+    # ============================================================
+    - name: final-consumer
+      inputs:
+        artifacts:
+          - name: processed-data
+            path: /tmp/final-data.json
+
+      container:
+        image: alpine:latest
+        command: [sh, -c]
+        args:
+          - |
+            echo "============================================"
+            echo "  FINAL CONSUMER"
+            echo "============================================"
+
+            echo "Final processed data:"
+            cat /tmp/final-data.json
+
+            echo ""
+            echo "Workflow artifact chain complete!"
+            echo "============================================"
+
+---
+# ============================================================
+# Example 2: DAG with Artifact Dependencies
+# ============================================================
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: dag-artifacts-
+spec:
+  entrypoint: main
+  serviceAccountName: argo-workflow
+
+  templates:
+    - name: main
+      dag:
+        tasks:
+          # Generate base data
+          - name: generate-base
+            template: generate-base-data
+
+          # Two parallel processors using same artifact
+          - name: process-a
+            dependencies: [generate-base]
+            template: processor-a
+            arguments:
+              artifacts:
+                - name: input
+                  from: "{{tasks.generate-base.outputs.artifacts.base-data}}"
+
+          - name: process-b
+            dependencies: [generate-base]
+            template: processor-b
+            arguments:
+              artifacts:
+                - name: input
+                  from: "{{tasks.generate-base.outputs.artifacts.base-data}}"
+
+          # Merge results from both processors
+          - name: merge
+            dependencies: [process-a, process-b]
+            template: merge-results
+            arguments:
+              artifacts:
+                - name: result-a
+                  from: "{{tasks.process-a.outputs.artifacts.output-a}}"
+                - name: result-b
+                  from: "{{tasks.process-b.outputs.artifacts.output-b}}"
+
+    - name: generate-base-data
+      container:
+        image: alpine:latest
+        command: [sh, -c]
+        args:
+          - |
+            echo '{"numbers": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]}' > /tmp/base.json
+            echo "Generated base data"
+            cat /tmp/base.json
+      outputs:
+        artifacts:
+          - name: base-data
+            path: /tmp/base.json
+
+    - name: processor-a
+      inputs:
+        artifacts:
+          - name: input
+            path: /tmp/input.json
+      container:
+        image: python:3.9-alpine
+        command: [python, -c]
+        args:
+          - |
+            import json
+            with open('/tmp/input.json') as f:
+                data = json.load(f)
+            # Sum all numbers
+            result = {"processor": "A", "sum": sum(data['numbers'])}
+            with open('/tmp/result.json', 'w') as f:
+                json.dump(result, f)
+            print(f"Processor A result: {result}")
+      outputs:
+        artifacts:
+          - name: output-a
+            path: /tmp/result.json
+
+    - name: processor-b
+      inputs:
+        artifacts:
+          - name: input
+            path: /tmp/input.json
+      container:
+        image: python:3.9-alpine
+        command: [python, -c]
+        args:
+          - |
+            import json
+            with open('/tmp/input.json') as f:
+                data = json.load(f)
+            # Calculate average
+            nums = data['numbers']
+            result = {"processor": "B", "average": sum(nums) / len(nums)}
+            with open('/tmp/result.json', 'w') as f:
+                json.dump(result, f)
+            print(f"Processor B result: {result}")
+      outputs:
+        artifacts:
+          - name: output-b
+            path: /tmp/result.json
+
+    - name: merge-results
+      inputs:
+        artifacts:
+          - name: result-a
+            path: /tmp/a.json
+          - name: result-b
+            path: /tmp/b.json
+      container:
+        image: python:3.9-alpine
+        command: [python, -c]
+        args:
+          - |
+            import json
+            with open('/tmp/a.json') as f:
+                a = json.load(f)
+            with open('/tmp/b.json') as f:
+                b = json.load(f)
+            merged = {"results": [a, b], "merged": True}
+            print("Merged results:")
+            print(json.dumps(merged, indent=2))
+
+---
+# ============================================================
+# Example 3: Directory Artifacts
+# ============================================================
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: directory-artifacts-
+spec:
+  entrypoint: main
+  serviceAccountName: argo-workflow
+
+  templates:
+    - name: main
+      steps:
+        - - name: generate-dir
+            template: generate-directory
+        - - name: consume-dir
+            template: consume-directory
+            arguments:
+              artifacts:
+                - name: input-dir
+                  from: "{{steps.generate-dir.outputs.artifacts.output-dir}}"
+
+    - name: generate-directory
+      container:
+        image: alpine:latest
+        command: [sh, -c]
+        args:
+          - |
+            mkdir -p /tmp/output-dir
+            echo "File 1 content" > /tmp/output-dir/file1.txt
+            echo "File 2 content" > /tmp/output-dir/file2.txt
+            echo "File 3 content" > /tmp/output-dir/file3.txt
+            echo "Generated directory with files:"
+            ls -la /tmp/output-dir/
+      outputs:
+        artifacts:
+          - name: output-dir
+            path: /tmp/output-dir  # Entire directory as artifact
+
+    - name: consume-directory
+      inputs:
+        artifacts:
+          - name: input-dir
+            path: /tmp/received-dir
+      container:
+        image: alpine:latest
+        command: [sh, -c]
+        args:
+          - |
+            echo "Received directory contents:"
+            ls -la /tmp/received-dir/
+            echo ""
+            echo "File contents:"
+            for f in /tmp/received-dir/*; do
+              echo "=== $f ==="
+              cat "$f"
+            done
+
+# ============================================================
+# GENERATE AND CONSUME ARTIFACTS KEY POINTS:
+#
+# GENERATING ARTIFACTS (outputs):
+#   outputs:
+#     artifacts:
+#       - name: my-artifact      # Name for reference
+#         path: /tmp/file.json   # Path in container
+#
+# CONSUMING ARTIFACTS (inputs):
+#   inputs:
+#     artifacts:
+#       - name: input-artifact   # Name in this template
+#         path: /tmp/input.json  # Where to mount
+#
+# PASSING BETWEEN STEPS:
+#   arguments:
+#     artifacts:
+#       - name: input-artifact
+#         from: "{{steps.step-name.outputs.artifacts.artifact-name}}"
+#
+# PASSING IN DAG:
+#   arguments:
+#     artifacts:
+#       - name: input-artifact
+#         from: "{{tasks.task-name.outputs.artifacts.artifact-name}}"
+#
+# ARTIFACT TYPES:
+#   - Single file: path: /tmp/file.json
+#   - Directory: path: /tmp/my-dir (includes all contents)
+#   - Archive: automatically tarballed for transfer
+#
+# OPTIONAL ARTIFACTS:
+#   inputs:
+#     artifacts:
+#       - name: optional-file
+#         path: /tmp/optional.json
+#         optional: true  # Won't fail if not provided
+#
+# ============================================================

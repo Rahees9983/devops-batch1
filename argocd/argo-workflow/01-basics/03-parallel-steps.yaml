@@ -1,0 +1,106 @@
+# ============================================================
+# Parallel Steps Workflow
+# ============================================================
+# This workflow demonstrates parallel execution
+# Multiple steps can run at the same time
+#
+# Run: argo submit -n argo 03-parallel-steps.yaml --watch
+# ============================================================
+
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: parallel-steps-
+spec:
+  entrypoint: main
+
+  templates:
+    - name: main
+      steps:
+        # Step 1: Single step runs first
+        - - name: start
+            template: task
+            arguments:
+              parameters:
+                - name: task-name
+                  value: "START"
+                - name: duration
+                  value: "2"
+
+        # Step 2: These three run IN PARALLEL (same array element)
+        - - name: parallel-task-a
+            template: task
+            arguments:
+              parameters:
+                - name: task-name
+                  value: "TASK-A"
+                - name: duration
+                  value: "5"
+          - name: parallel-task-b
+            template: task
+            arguments:
+              parameters:
+                - name: task-name
+                  value: "TASK-B"
+                - name: duration
+                  value: "3"
+          - name: parallel-task-c
+            template: task
+            arguments:
+              parameters:
+                - name: task-name
+                  value: "TASK-C"
+                - name: duration
+                  value: "4"
+
+        # Step 3: Runs after ALL parallel tasks complete
+        - - name: finish
+            template: task
+            arguments:
+              parameters:
+                - name: task-name
+                  value: "FINISH"
+                - name: duration
+                  value: "2"
+
+    # Task template - simulates work with sleep
+    - name: task
+      inputs:
+        parameters:
+          - name: task-name
+          - name: duration
+      container:
+        image: alpine:latest
+        command: [sh, -c]
+        args:
+          - |
+            echo "Starting {{inputs.parameters.task-name}}..."
+            echo "Will run for {{inputs.parameters.duration}} seconds"
+            sleep {{inputs.parameters.duration}}
+            echo "Completed {{inputs.parameters.task-name}}"
+
+# ============================================================
+# EXECUTION FLOW:
+#
+#                 ┌─────────┐
+#                 │  START  │
+#                 └────┬────┘
+#                      │
+#        ┌─────────────┼─────────────┐
+#        │             │             │
+#        ▼             ▼             ▼
+#   ┌─────────┐   ┌─────────┐   ┌─────────┐
+#   │ TASK-A  │   │ TASK-B  │   │ TASK-C  │
+#   │  (5s)   │   │  (3s)   │   │  (4s)   │
+#   └────┬────┘   └────┬────┘   └────┬────┘
+#        │             │             │
+#        └─────────────┼─────────────┘
+#                      │
+#                      ▼
+#                 ┌─────────┐
+#                 │ FINISH  │
+#                 └─────────┘
+#
+# Total time: ~7 seconds (not 14 seconds!)
+# Because parallel tasks run simultaneously
+# ============================================================

@@ -1,0 +1,221 @@
+# ============================================================
+# HTTP Template - Make HTTP Requests
+# ============================================================
+# Makes HTTP requests without running a container
+# Lightweight and fast - no container overhead
+#
+# Run: argo submit -n argo 06-http-template.yaml --watch
+# ============================================================
+
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: http-template-
+spec:
+  entrypoint: main
+  serviceAccountName: argo-workflow
+
+  templates:
+    - name: main
+      steps:
+        - - name: get-request
+            template: http-get-example
+        - - name: post-request
+            template: http-post-example
+        - - name: check-response
+            template: process-response
+            arguments:
+              parameters:
+                - name: response
+                  value: "{{steps.get-request.outputs.result}}"
+
+    # ============================================================
+    # GET Request Example
+    # ============================================================
+    - name: http-get-example
+      http:
+        url: "https://httpbin.org/get?workflow=argo"
+        method: "GET"
+        headers:
+          - name: "User-Agent"
+            value: "Argo-Workflow/1.0"
+          - name: "X-Request-ID"
+            value: "{{workflow.name}}"
+        # Success if status code is 200
+        successCondition: "response.statusCode == 200"
+        # Timeout in seconds
+        timeoutSeconds: 30
+
+    # ============================================================
+    # POST Request Example
+    # ============================================================
+    - name: http-post-example
+      http:
+        url: "https://httpbin.org/post"
+        method: "POST"
+        headers:
+          - name: "Content-Type"
+            value: "application/json"
+          - name: "Authorization"
+            value: "Bearer sample-token"
+        body: |
+          {
+            "workflow": "{{workflow.name}}",
+            "timestamp": "{{workflow.creationTimestamp}}",
+            "status": "running",
+            "data": {
+              "key1": "value1",
+              "key2": "value2"
+            }
+          }
+        successCondition: "response.statusCode >= 200 && response.statusCode < 300"
+
+    # ============================================================
+    # Process HTTP Response
+    # ============================================================
+    - name: process-response
+      inputs:
+        parameters:
+          - name: response
+      container:
+        image: alpine:latest
+        command: [sh, -c]
+        args:
+          - |
+            echo "============================================"
+            echo "  HTTP TEMPLATE - Response Processing"
+            echo "============================================"
+            echo "Received response from HTTP template:"
+            echo "{{inputs.parameters.response}}"
+            echo "============================================"
+
+---
+# ============================================================
+# Example: Webhook Notifications
+# ============================================================
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: http-webhook-
+spec:
+  entrypoint: main
+  serviceAccountName: argo-workflow
+
+  templates:
+    - name: main
+      steps:
+        - - name: start-notification
+            template: notify-start
+        - - name: do-work
+            template: work
+        - - name: end-notification
+            template: notify-complete
+
+    - name: notify-start
+      http:
+        url: "https://httpbin.org/post"
+        method: "POST"
+        headers:
+          - name: "Content-Type"
+            value: "application/json"
+        body: |
+          {
+            "event": "workflow_started",
+            "workflow": "{{workflow.name}}",
+            "timestamp": "{{workflow.creationTimestamp}}"
+          }
+        successCondition: "response.statusCode == 200"
+
+    - name: work
+      container:
+        image: alpine:latest
+        command: [sh, -c]
+        args:
+          - |
+            echo "Doing important work..."
+            sleep 5
+            echo "Work complete!"
+
+    - name: notify-complete
+      http:
+        url: "https://httpbin.org/post"
+        method: "POST"
+        headers:
+          - name: "Content-Type"
+            value: "application/json"
+        body: |
+          {
+            "event": "workflow_completed",
+            "workflow": "{{workflow.name}}",
+            "status": "success"
+          }
+        successCondition: "response.statusCode == 200"
+
+---
+# ============================================================
+# Example: Health Check with Retry
+# ============================================================
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: http-health-check-
+spec:
+  entrypoint: health-check
+  serviceAccountName: argo-workflow
+
+  templates:
+    - name: health-check
+      retryStrategy:
+        limit: 5
+        backoff:
+          duration: "5s"
+          factor: 2
+          maxDuration: "60s"
+      http:
+        url: "https://httpbin.org/status/200"
+        method: "GET"
+        successCondition: "response.statusCode == 200"
+        timeoutSeconds: 10
+
+# ============================================================
+# HTTP TEMPLATE KEY POINTS:
+#
+# Structure:
+#   http:
+#     url: "https://api.example.com/endpoint"
+#     method: "GET" | "POST" | "PUT" | "DELETE" | "PATCH"
+#     headers:
+#       - name: "Header-Name"
+#         value: "header-value"
+#     body: "request body for POST/PUT"
+#     successCondition: "response.statusCode == 200"
+#     timeoutSeconds: 30
+#
+# Available Response Fields:
+#   response.statusCode  - HTTP status code (200, 404, etc.)
+#   response.body        - Response body as string
+#   response.headers     - Response headers
+#
+# Success Conditions:
+#   response.statusCode == 200
+#   response.statusCode >= 200 && response.statusCode < 300
+#   response.body contains "success"
+#
+# Output:
+#   - {{steps.step-name.outputs.result}} contains response
+#   - Can be parsed in subsequent steps
+#
+# WHEN TO USE:
+#   - Webhook notifications (Slack, Teams)
+#   - API health checks
+#   - Triggering external systems
+#   - REST API integrations
+#   - Lightweight HTTP calls (no container overhead)
+#
+# ADVANTAGES OVER CURL IN CONTAINER:
+#   - No container startup time
+#   - Less resource usage
+#   - Cleaner YAML
+#   - Built-in retry and timeout
+#
+# ============================================================

@@ -1,0 +1,212 @@
+# ============================================================
+# Resource Template - Kubernetes Resource Management
+# ============================================================
+# Creates, patches, or deletes Kubernetes resources
+# Great for infrastructure provisioning within workflows
+#
+# Run: argo submit -n argo 03-resource-template.yaml --watch
+# ============================================================
+
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: resource-template-
+spec:
+  entrypoint: main
+  serviceAccountName: argo-workflow
+
+  templates:
+    - name: main
+      steps:
+        - - name: create-configmap
+            template: create-configmap-example
+        - - name: create-secret
+            template: create-secret-example
+        - - name: create-job
+            template: create-job-example
+        - - name: verify-resources
+            template: verify-resources
+
+    # ============================================================
+    # Create ConfigMap Example
+    # ============================================================
+    - name: create-configmap-example
+      resource:
+        action: create        # create, apply, patch, delete
+        setOwnerReference: true  # Delete when workflow is deleted
+        manifest: |
+          apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: workflow-config-{{workflow.name}}
+            namespace: argo
+            labels:
+              created-by: argo-workflow
+              workflow: "{{workflow.name}}"
+          data:
+            app.properties: |
+              # Application Configuration
+              environment=development
+              debug=true
+              log_level=INFO
+            database.conf: |
+              host=localhost
+              port=5432
+              database=myapp
+
+    # ============================================================
+    # Create Secret Example
+    # ============================================================
+    - name: create-secret-example
+      resource:
+        action: create
+        setOwnerReference: true
+        manifest: |
+          apiVersion: v1
+          kind: Secret
+          metadata:
+            name: workflow-secret-{{workflow.name}}
+            namespace: argo
+          type: Opaque
+          stringData:
+            username: admin
+            # In real scenarios, get from Vault or external secrets
+            password: "generated-{{workflow.name}}"
+
+    # ============================================================
+    # Create Job Example
+    # ============================================================
+    - name: create-job-example
+      resource:
+        action: create
+        setOwnerReference: true
+        # Wait for Job completion
+        successCondition: status.succeeded > 0
+        failureCondition: status.failed > 0
+        manifest: |
+          apiVersion: batch/v1
+          kind: Job
+          metadata:
+            name: workflow-job-{{workflow.name}}
+            namespace: argo
+          spec:
+            ttlSecondsAfterFinished: 60
+            template:
+              spec:
+                restartPolicy: Never
+                containers:
+                  - name: worker
+                    image: alpine:latest
+                    command: [sh, -c]
+                    args:
+                      - |
+                        echo "Job created by workflow: {{workflow.name}}"
+                        echo "Processing..."
+                        sleep 5
+                        echo "Job complete!"
+
+    # ============================================================
+    # Verify Resources Were Created
+    # ============================================================
+    - name: verify-resources
+      container:
+        image: bitnami/kubectl:latest
+        command: [sh, -c]
+        args:
+          - |
+            echo "============================================"
+            echo "  Verifying Created Resources"
+            echo "============================================"
+            echo ""
+            echo "ConfigMap:"
+            kubectl get configmap workflow-config-{{workflow.name}} -n argo -o yaml 2>/dev/null || echo "Not found"
+            echo ""
+            echo "Secret:"
+            kubectl get secret workflow-secret-{{workflow.name}} -n argo 2>/dev/null || echo "Not found"
+            echo ""
+            echo "Job:"
+            kubectl get job workflow-job-{{workflow.name}} -n argo 2>/dev/null || echo "Not found"
+            echo "============================================"
+
+---
+# ============================================================
+# Example: Patch Existing Resource
+# ============================================================
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: resource-patch-
+spec:
+  entrypoint: patch-example
+  serviceAccountName: argo-workflow
+
+  templates:
+    - name: patch-example
+      resource:
+        action: patch
+        mergeStrategy: strategic  # strategic, merge, json
+        manifest: |
+          apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: existing-config
+            namespace: argo
+          data:
+            new-key: "added-by-workflow"
+            updated: "{{workflow.creationTimestamp}}"
+
+---
+# ============================================================
+# Example: Delete Resource
+# ============================================================
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: resource-delete-
+spec:
+  entrypoint: delete-example
+  serviceAccountName: argo-workflow
+
+  templates:
+    - name: delete-example
+      resource:
+        action: delete
+        manifest: |
+          apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: config-to-delete
+            namespace: argo
+
+# ============================================================
+# RESOURCE TEMPLATE KEY POINTS:
+#
+# Actions:
+#   create  - Create new resource (fails if exists)
+#   apply   - Create or update (like kubectl apply)
+#   patch   - Update existing resource
+#   delete  - Delete resource
+#
+# Important Fields:
+#   setOwnerReference: true   # Auto-delete with workflow
+#   successCondition: <expr>  # Wait for condition
+#   failureCondition: <expr>  # Fail on condition
+#   mergeStrategy: strategic  # For patch action
+#
+# Success/Failure Conditions:
+#   - Use JSONPath expressions
+#   - status.succeeded > 0    # Job completed
+#   - status.phase == Running # Pod is running
+#   - status.ready == true    # Resource is ready
+#
+# WHEN TO USE:
+#   - Provisioning infrastructure (Jobs, ConfigMaps, Secrets)
+#   - Dynamic resource creation based on workflow params
+#   - Setting up test environments
+#   - Creating temporary resources with auto-cleanup
+#
+# RBAC REQUIREMENTS:
+#   ServiceAccount needs permissions to create/patch/delete
+#   the resource types specified in manifests
+#
+# ============================================================

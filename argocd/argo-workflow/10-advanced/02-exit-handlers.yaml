@@ -1,0 +1,206 @@
+# ============================================================
+# Exit Handlers
+# ============================================================
+# Exit handlers run after workflow completes (success or failure)
+# Great for cleanup, notifications, and finalization
+#
+# Run: argo submit -n argo 02-exit-handlers.yaml --watch
+# ============================================================
+
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: exit-handlers-
+spec:
+  entrypoint: main
+
+  # Exit handler - runs after main workflow
+  onExit: exit-handler
+
+  templates:
+    # Main workflow
+    - name: main
+      steps:
+        - - name: setup
+            template: setup-resources
+
+        - - name: process
+            template: process-data
+
+        # Uncomment to test failure scenario
+        # - - name: fail-step
+        #     template: fail-task
+
+        - - name: finalize
+            template: finalize
+
+    # Exit handler template
+    - name: exit-handler
+      steps:
+        # Always run - check status
+        - - name: notify-status
+            template: send-notification
+            arguments:
+              parameters:
+                - name: status
+                  value: "{{workflow.status}}"
+
+        # Only on success
+        - - name: success-actions
+            template: on-success
+            when: "{{workflow.status}} == Succeeded"
+
+        # Only on failure
+          - name: failure-actions
+            template: on-failure
+            when: "{{workflow.status}} == Failed"
+
+        # Always - cleanup
+        - - name: cleanup
+            template: cleanup-resources
+
+    # Setup template
+    - name: setup-resources
+      container:
+        image: alpine:latest
+        command: [sh, -c]
+        args:
+          - |
+            echo "=== Setting up resources ==="
+            echo "Creating temporary files..."
+            sleep 1
+            echo "Setup complete!"
+
+    # Process template
+    - name: process-data
+      container:
+        image: alpine:latest
+        command: [sh, -c]
+        args:
+          - |
+            echo "=== Processing data ==="
+            sleep 2
+            echo "Processing complete!"
+
+    # Finalize template
+    - name: finalize
+      container:
+        image: alpine:latest
+        command: [sh, -c]
+        args:
+          - |
+            echo "=== Finalizing ==="
+            sleep 1
+            echo "Finalization complete!"
+
+    # Fail task (for testing)
+    - name: fail-task
+      container:
+        image: alpine:latest
+        command: [sh, -c]
+        args:
+          - |
+            echo "This task will fail!"
+            exit 1
+
+    # Notification template
+    - name: send-notification
+      inputs:
+        parameters:
+          - name: status
+      container:
+        image: alpine:latest
+        command: [sh, -c]
+        args:
+          - |
+            echo "============================================"
+            echo "      EXIT HANDLER - NOTIFICATION          "
+            echo "============================================"
+            echo "Workflow: {{workflow.name}}"
+            echo "Status: {{inputs.parameters.status}}"
+            echo "Duration: {{workflow.duration}}"
+            echo ""
+            echo "Sending notification to Slack/Email..."
+            echo "============================================"
+
+    # Success actions
+    - name: on-success
+      container:
+        image: alpine:latest
+        command: [sh, -c]
+        args:
+          - |
+            echo "=== SUCCESS ACTIONS ==="
+            echo "Workflow completed successfully!"
+            echo "- Updating metrics"
+            echo "- Archiving logs"
+            echo "- Triggering downstream jobs"
+
+    # Failure actions
+    - name: on-failure
+      container:
+        image: alpine:latest
+        command: [sh, -c]
+        args:
+          - |
+            echo "=== FAILURE ACTIONS ==="
+            echo "Workflow failed!"
+            echo "- Creating incident ticket"
+            echo "- Paging on-call engineer"
+            echo "- Preserving debug logs"
+
+    # Cleanup template
+    - name: cleanup-resources
+      container:
+        image: alpine:latest
+        command: [sh, -c]
+        args:
+          - |
+            echo "=== CLEANUP ==="
+            echo "Removing temporary resources..."
+            echo "- Deleting temp files"
+            echo "- Releasing locks"
+            echo "- Cleaning up PVCs"
+            echo "Cleanup complete!"
+
+# ============================================================
+# EXIT HANDLER FLOW:
+#
+#   ┌───────────────────────────────────────┐
+#   │           MAIN WORKFLOW               │
+#   │                                       │
+#   │   Setup → Process → Finalize         │
+#   │                                       │
+#   └───────────────┬───────────────────────┘
+#                   │
+#                   │ (always runs after main)
+#                   │
+#   ┌───────────────▼───────────────────────┐
+#   │           EXIT HANDLER                │
+#   │                                       │
+#   │   ┌───────────────────────────────┐   │
+#   │   │    Notify Status (always)     │   │
+#   │   └───────────────────────────────┘   │
+#   │                                       │
+#   │   ┌─────────────┬─────────────┐       │
+#   │   │             │             │       │
+#   │   ▼             ▼             │       │
+#   │ ┌─────────┐ ┌─────────┐      │       │
+#   │ │ Success │ │ Failure │      │       │
+#   │ │ Actions │ │ Actions │      │       │
+#   │ │(if pass)│ │(if fail)│      │       │
+#   │ └─────────┘ └─────────┘      │       │
+#   │                              │       │
+#   │   ┌───────────────────────────────┐   │
+#   │   │     Cleanup (always)          │   │
+#   │   └───────────────────────────────┘   │
+#   │                                       │
+#   └───────────────────────────────────────┘
+#
+# AVAILABLE VARIABLES IN EXIT HANDLER:
+#   {{workflow.name}}       - Workflow name
+#   {{workflow.status}}     - Succeeded/Failed
+#   {{workflow.duration}}   - Total duration
+#   {{workflow.failures}}   - Failure details
+#
+# ============================================================

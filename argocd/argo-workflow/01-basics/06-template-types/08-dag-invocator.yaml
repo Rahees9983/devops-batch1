@@ -1,0 +1,349 @@
+# ============================================================
+# DAG Template Invocator - Dependency-Based Orchestration
+# ============================================================
+# Orchestrates templates based on explicit dependencies
+# More flexible than Steps for complex workflows
+#
+# Run: argo submit -n argo 08-dag-invocator.yaml --watch
+# ============================================================
+
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: dag-invocator-
+spec:
+  entrypoint: main
+  serviceAccountName: argo-workflow
+
+  templates:
+    # ============================================================
+    # Main DAG Template
+    # ============================================================
+    - name: main
+      dag:
+        tasks:
+          # Task A: No dependencies - starts immediately
+          - name: task-a
+            template: task
+            arguments:
+              parameters:
+                - name: message
+                  value: "A: Initialize"
+
+          # Tasks B, C: Depend on A - run in parallel after A
+          - name: task-b
+            dependencies: [task-a]
+            template: task
+            arguments:
+              parameters:
+                - name: message
+                  value: "B: Process Data"
+
+          - name: task-c
+            dependencies: [task-a]
+            template: task
+            arguments:
+              parameters:
+                - name: message
+                  value: "C: Validate Config"
+
+          # Task D: Depends on both B and C - waits for both
+          - name: task-d
+            dependencies: [task-b, task-c]
+            template: task
+            arguments:
+              parameters:
+                - name: message
+                  value: "D: Deploy Application"
+
+          # Task E: Only depends on C - can run while D runs
+          - name: task-e
+            dependencies: [task-c]
+            template: task
+            arguments:
+              parameters:
+                - name: message
+                  value: "E: Send Notifications"
+
+          # Task F: Final task - depends on D and E
+          - name: task-f
+            dependencies: [task-d, task-e]
+            template: task
+            arguments:
+              parameters:
+                - name: message
+                  value: "F: Complete!"
+
+    # ============================================================
+    # Task Template
+    # ============================================================
+    - name: task
+      inputs:
+        parameters:
+          - name: message
+      container:
+        image: alpine:latest
+        command: [sh, -c]
+        args:
+          - |
+            echo "============================================"
+            echo "{{inputs.parameters.message}}"
+            echo "============================================"
+            sleep 2
+
+---
+# ============================================================
+# CI/CD Pipeline using DAG
+# ============================================================
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: dag-cicd-
+spec:
+  entrypoint: ci-cd-pipeline
+  serviceAccountName: argo-workflow
+
+  templates:
+    - name: ci-cd-pipeline
+      dag:
+        tasks:
+          # Clone repository
+          - name: clone
+            template: git-clone
+
+          # Run in parallel after clone
+          - name: lint
+            dependencies: [clone]
+            template: run-lint
+
+          - name: unit-tests
+            dependencies: [clone]
+            template: run-tests
+            arguments:
+              parameters:
+                - name: test-type
+                  value: "unit"
+
+          - name: security-scan
+            dependencies: [clone]
+            template: security-scan
+
+          # Build after lint and tests pass
+          - name: build
+            dependencies: [lint, unit-tests]
+            template: build-app
+
+          # Integration tests need build
+          - name: integration-tests
+            dependencies: [build]
+            template: run-tests
+            arguments:
+              parameters:
+                - name: test-type
+                  value: "integration"
+
+          # Deploy after all checks pass
+          - name: deploy-staging
+            dependencies: [build, security-scan]
+            template: deploy
+            arguments:
+              parameters:
+                - name: environment
+                  value: "staging"
+
+          # Smoke tests on staging
+          - name: smoke-tests
+            dependencies: [deploy-staging]
+            template: run-tests
+            arguments:
+              parameters:
+                - name: test-type
+                  value: "smoke"
+
+          # Production deploy after all tests
+          - name: deploy-prod
+            dependencies: [integration-tests, smoke-tests]
+            template: deploy
+            arguments:
+              parameters:
+                - name: environment
+                  value: "production"
+
+    - name: git-clone
+      container:
+        image: alpine/git
+        command: [sh, -c]
+        args: ["echo 'Cloning repository...' && sleep 2"]
+
+    - name: run-lint
+      container:
+        image: node:18-alpine
+        command: [sh, -c]
+        args: ["echo 'Running linter...' && sleep 2"]
+
+    - name: run-tests
+      inputs:
+        parameters:
+          - name: test-type
+      container:
+        image: node:18-alpine
+        command: [sh, -c]
+        args:
+          - |
+            echo "Running {{inputs.parameters.test-type}} tests..."
+            sleep 3
+            echo "Tests passed!"
+
+    - name: security-scan
+      container:
+        image: alpine:latest
+        command: [sh, -c]
+        args: ["echo 'Running security scan...' && sleep 2"]
+
+    - name: build-app
+      container:
+        image: docker:latest
+        command: [sh, -c]
+        args: ["echo 'Building application...' && sleep 3"]
+
+    - name: deploy
+      inputs:
+        parameters:
+          - name: environment
+      container:
+        image: alpine:latest
+        command: [sh, -c]
+        args:
+          - |
+            echo "Deploying to {{inputs.parameters.environment}}..."
+            sleep 2
+            echo "Deployed!"
+
+---
+# ============================================================
+# DAG with Task Result Dependencies
+# ============================================================
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: dag-depends-
+spec:
+  entrypoint: main
+  serviceAccountName: argo-workflow
+
+  templates:
+    - name: main
+      dag:
+        tasks:
+          - name: generate
+            template: generate-data
+
+          # Use output from generate
+          - name: process
+            dependencies: [generate]
+            template: process-data
+            arguments:
+              parameters:
+                - name: data
+                  value: "{{tasks.generate.outputs.result}}"
+
+          # Advanced: Depend on specific condition
+          - name: conditional-task
+            dependencies: [generate]
+            # depends: "generate.Succeeded"  # Alternative syntax
+            template: conditional-work
+            when: "{{tasks.generate.outputs.result}} != ''"
+
+    - name: generate-data
+      script:
+        image: python:3.9-alpine
+        command: [python]
+        source: |
+          import json
+          data = {"count": 42, "status": "ready"}
+          print(json.dumps(data))
+
+    - name: process-data
+      inputs:
+        parameters:
+          - name: data
+      container:
+        image: alpine:latest
+        command: [sh, -c]
+        args:
+          - |
+            echo "Processing data: {{inputs.parameters.data}}"
+
+    - name: conditional-work
+      container:
+        image: alpine:latest
+        command: [echo, "Conditional task executed!"]
+
+# ============================================================
+# DAG TEMPLATE KEY POINTS:
+#
+# Structure:
+#   dag:
+#     tasks:
+#       - name: task-a
+#         template: work
+#         # No dependencies = starts immediately
+#
+#       - name: task-b
+#         dependencies: [task-a]  # Wait for task-a
+#         template: work
+#
+#       - name: task-c
+#         dependencies: [task-a, task-b]  # Wait for both
+#         template: work
+#
+# Execution Flow Example:
+#
+#       ┌───────┐
+#       │   A   │  (no deps - starts first)
+#       └───┬───┘
+#           │
+#     ┌─────┴─────┐
+#     │           │
+#   ┌─▼─┐       ┌─▼─┐
+#   │ B │       │ C │  (both depend on A - parallel)
+#   └─┬─┘       └─┬─┘
+#     │           │
+#     └─────┬─────┘
+#           │
+#       ┌───▼───┐
+#       │   D   │  (depends on B AND C)
+#       └───────┘
+#
+# Advanced Dependencies (depends field):
+#   depends: "task-a"                    # Same as dependencies: [task-a]
+#   depends: "task-a && task-b"          # Both must succeed
+#   depends: "task-a || task-b"          # Either can succeed
+#   depends: "task-a.Succeeded"          # Explicit status
+#   depends: "task-a.Failed"             # Run if task-a fails
+#   depends: "(task-a.Succeeded && task-b.Succeeded) || task-c.Succeeded"
+#
+# Accessing Task Outputs:
+#   {{tasks.task-name.outputs.result}}
+#   {{tasks.task-name.outputs.parameters.param-name}}
+#
+# WHEN TO USE DAG:
+#   - Complex dependency graphs
+#   - Diamond patterns (A -> B,C -> D)
+#   - Dynamic execution based on results
+#   - Maximum parallelism
+#
+# STEPS VS DAG:
+#   Steps: Simple, linear, array-based
+#   DAG: Complex, graph-based, explicit dependencies
+#
+#   Steps is sufficient for:
+#   - A -> B -> C (simple sequence)
+#   - A -> [B, C] -> D (basic fan-out/fan-in)
+#
+#   DAG is better for:
+#   - Complex dependency trees
+#   - Multiple diamond patterns
+#   - Conditional execution based on multiple predecessors
+#
+# ============================================================

@@ -1,0 +1,50 @@
+# ============================================================
+# Hello World - Your First Argo Workflow
+# ============================================================
+# This is the simplest possible workflow
+# It runs a single container that prints "Hello World"
+#
+# Run: argo submit -n argo 01-hello-world.yaml --watch
+# ============================================================
+
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: hello-world-    # Argo will add a unique suffix
+  labels:
+    workflows.argoproj.io/archive-strategy: "false"
+spec:
+  # The entrypoint specifies which template to start with
+  entrypoint: say-hello
+
+  # List of templates (reusable steps)
+  templates:
+    # Template 1: A simple container that echoes "Hello World"
+    - name: say-hello
+      container:
+        image: alpine:latest
+        command: [echo]
+        args: ["Hello World from Argo Workflows!"]
+
+# ============================================================
+# WORKFLOW EXECUTION FLOW:
+#
+# ┌─────────────────────────────────────────┐
+# │           Workflow Submitted            │
+# └─────────────────┬───────────────────────┘
+#                   │
+#                   ▼
+# ┌─────────────────────────────────────────┐
+# │     entrypoint: say-hello               │
+# │                                         │
+# │  ┌───────────────────────────────────┐  │
+# │  │  Container: alpine                │  │
+# │  │  Command: echo "Hello World..."   │  │
+# │  └───────────────────────────────────┘  │
+# └─────────────────┬───────────────────────┘
+#                   │
+#                   ▼
+# ┌─────────────────────────────────────────┐
+# │           Workflow Completed            │
+# └─────────────────────────────────────────┘
+# ============================================================

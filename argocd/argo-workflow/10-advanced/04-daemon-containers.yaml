@@ -1,0 +1,330 @@
+# ============================================================
+# Daemon Containers - Long-Running Sidecar Services
+# ============================================================
+# Daemon containers run throughout the workflow lifecycle
+# They don't block workflow completion - workflow continues even if daemon runs
+# Great for: databases, message queues, mock servers, sidecars
+#
+# Run: argo submit -n argo 04-daemon-containers.yaml --watch
+# ============================================================
+
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: daemon-container-
+spec:
+  entrypoint: main
+  serviceAccountName: argo-workflow
+
+  templates:
+    - name: main
+      steps:
+        - - name: database-test
+            template: test-with-database
+
+        - - name: api-test
+            template: test-with-mock-api
+
+    # ============================================================
+    # Example 1: Running tests with a database daemon
+    # ============================================================
+    - name: test-with-database
+      dag:
+        tasks:
+          # Start PostgreSQL as daemon (runs in background)
+          - name: postgres
+            template: postgres-daemon
+
+          # Wait for database to be ready
+          - name: wait-for-db
+            dependencies: [postgres]
+            template: wait-for-postgres
+            arguments:
+              parameters:
+                - name: host
+                  value: "{{tasks.postgres.ip}}"
+
+          # Run tests against the database
+          - name: run-tests
+            dependencies: [wait-for-db]
+            template: integration-tests
+            arguments:
+              parameters:
+                - name: db-host
+                  value: "{{tasks.postgres.ip}}"
+
+    # ============================================================
+    # PostgreSQL Daemon Template
+    # ============================================================
+    - name: postgres-daemon
+      daemon: true  # <-- KEY: This makes it a daemon
+      container:
+        image: postgres:15-alpine
+        env:
+          - name: POSTGRES_USER
+            value: "testuser"
+          - name: POSTGRES_PASSWORD
+            value: "testpass"
+          - name: POSTGRES_DB
+            value: "testdb"
+        ports:
+          - containerPort: 5432
+        readinessProbe:
+          exec:
+            command: [pg_isready, -U, testuser, -d, testdb]
+          initialDelaySeconds: 5
+          periodSeconds: 2
+
+    # ============================================================
+    # Wait for PostgreSQL
+    # ============================================================
+    - name: wait-for-postgres
+      inputs:
+        parameters:
+          - name: host
+      container:
+        image: postgres:15-alpine
+        command: [sh, -c]
+        args:
+          - |
+            echo "============================================"
+            echo "  WAITING FOR POSTGRESQL"
+            echo "============================================"
+            echo "Host: {{inputs.parameters.host}}"
+            echo ""
+            for i in $(seq 1 30); do
+              if pg_isready -h {{inputs.parameters.host}} -U testuser -d testdb; then
+                echo "PostgreSQL is ready!"
+                exit 0
+              fi
+              echo "Waiting... ($i/30)"
+              sleep 2
+            done
+            echo "PostgreSQL failed to start!"
+            exit 1
+
+    # ============================================================
+    # Integration Tests
+    # ============================================================
+    - name: integration-tests
+      inputs:
+        parameters:
+          - name: db-host
+      container:
+        image: postgres:15-alpine
+        command: [sh, -c]
+        args:
+          - |
+            echo "============================================"
+            echo "  RUNNING INTEGRATION TESTS"
+            echo "============================================"
+            echo "Database Host: {{inputs.parameters.db-host}}"
+            echo ""
+            echo "Connecting to database..."
+            PGPASSWORD=testpass psql -h {{inputs.parameters.db-host}} -U testuser -d testdb -c "SELECT 1 as test;"
+            echo ""
+            echo "Creating test table..."
+            PGPASSWORD=testpass psql -h {{inputs.parameters.db-host}} -U testuser -d testdb -c "CREATE TABLE IF NOT EXISTS test_table (id SERIAL PRIMARY KEY, name VARCHAR(100));"
+            echo ""
+            echo "Inserting test data..."
+            PGPASSWORD=testpass psql -h {{inputs.parameters.db-host}} -U testuser -d testdb -c "INSERT INTO test_table (name) VALUES ('test1'), ('test2');"
+            echo ""
+            echo "Querying test data..."
+            PGPASSWORD=testpass psql -h {{inputs.parameters.db-host}} -U testuser -d testdb -c "SELECT * FROM test_table;"
+            echo ""
+            echo "All integration tests passed!"
+            echo "============================================"
+
+    # ============================================================
+    # Example 2: Mock API Server as Daemon
+    # ============================================================
+    - name: test-with-mock-api
+      dag:
+        tasks:
+          # Start mock API server as daemon
+          - name: mock-server
+            template: mock-api-daemon
+
+          # Run API tests against mock server
+          - name: api-tests
+            dependencies: [mock-server]
+            template: api-tests
+            arguments:
+              parameters:
+                - name: api-host
+                  value: "{{tasks.mock-server.ip}}"
+
+    # ============================================================
+    # Mock API Server Daemon
+    # ============================================================
+    - name: mock-api-daemon
+      daemon: true
+      container:
+        image: python:3.9-alpine
+        command: [python, -c]
+        args:
+          - |
+            from http.server import HTTPServer, BaseHTTPRequestHandler
+            import json
+
+            class MockHandler(BaseHTTPRequestHandler):
+                def do_GET(self):
+                    self.send_response(200)
+                    self.send_header('Content-Type', 'application/json')
+                    self.end_headers()
+                    response = {"status": "ok", "path": self.path}
+                    self.wfile.write(json.dumps(response).encode())
+
+                def log_message(self, format, *args):
+                    print(f"[Mock API] {args[0]}")
+
+            print("Starting mock API server on port 8080...")
+            server = HTTPServer(('0.0.0.0', 8080), MockHandler)
+            server.serve_forever()
+        ports:
+          - containerPort: 8080
+
+    # ============================================================
+    # API Tests
+    # ============================================================
+    - name: api-tests
+      inputs:
+        parameters:
+          - name: api-host
+      container:
+        image: curlimages/curl:latest
+        command: [sh, -c]
+        args:
+          - |
+            echo "============================================"
+            echo "  RUNNING API TESTS"
+            echo "============================================"
+            echo "Mock API Host: {{inputs.parameters.api-host}}"
+            echo ""
+
+            # Wait for server to be ready
+            sleep 3
+
+            echo "Test 1: GET /health"
+            curl -s http://{{inputs.parameters.api-host}}:8080/health
+            echo ""
+
+            echo "Test 2: GET /api/users"
+            curl -s http://{{inputs.parameters.api-host}}:8080/api/users
+            echo ""
+
+            echo "Test 3: GET /api/products"
+            curl -s http://{{inputs.parameters.api-host}}:8080/api/products
+            echo ""
+
+            echo "All API tests passed!"
+            echo "============================================"
+
+---
+# ============================================================
+# Example 3: Redis Cache Daemon
+# ============================================================
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: daemon-redis-
+spec:
+  entrypoint: main
+  serviceAccountName: argo-workflow
+
+  templates:
+    - name: main
+      dag:
+        tasks:
+          - name: redis
+            template: redis-daemon
+
+          - name: cache-tests
+            dependencies: [redis]
+            template: test-redis-cache
+            arguments:
+              parameters:
+                - name: redis-host
+                  value: "{{tasks.redis.ip}}"
+
+    - name: redis-daemon
+      daemon: true
+      container:
+        image: redis:7-alpine
+        ports:
+          - containerPort: 6379
+
+    - name: test-redis-cache
+      inputs:
+        parameters:
+          - name: redis-host
+      container:
+        image: redis:7-alpine
+        command: [sh, -c]
+        args:
+          - |
+            echo "============================================"
+            echo "  TESTING REDIS CACHE"
+            echo "============================================"
+            sleep 2
+
+            echo "Setting key..."
+            redis-cli -h {{inputs.parameters.redis-host}} SET mykey "Hello from Argo!"
+
+            echo "Getting key..."
+            redis-cli -h {{inputs.parameters.redis-host}} GET mykey
+
+            echo "Testing increment..."
+            redis-cli -h {{inputs.parameters.redis-host}} SET counter 0
+            redis-cli -h {{inputs.parameters.redis-host}} INCR counter
+            redis-cli -h {{inputs.parameters.redis-host}} INCR counter
+            redis-cli -h {{inputs.parameters.redis-host}} GET counter
+
+            echo ""
+            echo "All Redis tests passed!"
+            echo "============================================"
+
+# ============================================================
+# DAEMON CONTAINERS KEY POINTS:
+#
+# WHAT IS IT:
+#   - Container that runs throughout workflow execution
+#   - Doesn't block workflow completion
+#   - Automatically terminated when workflow completes
+#
+# HOW TO USE:
+#   - name: my-daemon
+#     daemon: true    # <-- Add this
+#     container:
+#       image: postgres:15
+#       ...
+#
+# ACCESSING DAEMON:
+#   - IP Address: {{tasks.daemon-name.ip}}
+#   - Use this IP to connect from other tasks
+#
+# COMMON USE CASES:
+#   1. Databases (PostgreSQL, MySQL, MongoDB)
+#   2. Cache servers (Redis, Memcached)
+#   3. Message queues (RabbitMQ, Kafka)
+#   4. Mock API servers for testing
+#   5. Service dependencies for integration tests
+#
+# LIFECYCLE:
+#   1. Daemon starts when referenced
+#   2. Other tasks can use {{tasks.daemon.ip}} to connect
+#   3. Daemon runs until workflow completes
+#   4. Daemon is killed when workflow ends (success or failure)
+#
+# BEST PRACTICES:
+#   1. Use readinessProbe to ensure daemon is ready
+#   2. Add wait/retry logic in consuming tasks
+#   3. Keep daemon resource usage reasonable
+#   4. Use health checks before running tests
+#
+# NOTE:
+#   - Daemons don't affect workflow success/failure
+#   - Even if daemon crashes, workflow can succeed
+#   - Use proper dependency management
+#
+# ============================================================

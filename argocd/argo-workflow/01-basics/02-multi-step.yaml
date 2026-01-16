@@ -1,0 +1,76 @@
+# ============================================================
+# Multi-Step Sequential Workflow
+# ============================================================
+# This workflow demonstrates sequential steps
+# Each step runs after the previous one completes
+#
+# Run: argo submit -n argo 02-multi-step.yaml --watch
+# ============================================================
+
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: multi-step-
+spec:
+  entrypoint: main
+
+  templates:
+    # Main template that defines the steps
+    - name: main
+      steps:
+        # Step 1: First step runs alone
+        - - name: step1
+            template: print-message
+            arguments:
+              parameters:
+                - name: message
+                  value: "Step 1: Starting the workflow"
+
+        # Step 2: Runs after Step 1 completes
+        - - name: step2
+            template: print-message
+            arguments:
+              parameters:
+                - name: message
+                  value: "Step 2: Processing data"
+
+        # Step 3: Runs after Step 2 completes
+        - - name: step3
+            template: print-message
+            arguments:
+              parameters:
+                - name: message
+                  value: "Step 3: Finishing up"
+
+    # Reusable template for printing messages
+    - name: print-message
+      inputs:
+        parameters:
+          - name: message
+      container:
+        image: alpine:latest
+        command: [sh, -c]
+        args: ["echo '{{inputs.parameters.message}}' && sleep 2"]
+
+# ============================================================
+# EXECUTION FLOW:
+#
+#  ┌─────────────────┐
+#  │     Step 1      │
+#  │  "Starting..."  │
+#  └────────┬────────┘
+#           │
+#           ▼
+#  ┌─────────────────┐
+#  │     Step 2      │
+#  │ "Processing..." │
+#  └────────┬────────┘
+#           │
+#           ▼
+#  ┌─────────────────┐
+#  │     Step 3      │
+#  │ "Finishing..."  │
+#  └─────────────────┘
+#
+# Each step waits for the previous one to complete
+# ============================================================

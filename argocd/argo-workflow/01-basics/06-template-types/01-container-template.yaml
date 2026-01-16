@@ -1,0 +1,115 @@
+# ============================================================
+# Container Template - Most Common Template Type
+# ============================================================
+# Runs a single container - similar to Kubernetes Pod spec
+# Use for: Running CLI tools, pre-built apps, containerized workloads
+#
+# Run: argo submit -n argo 01-container-template.yaml --watch
+# ============================================================
+
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: container-template-
+spec:
+  entrypoint: main
+  serviceAccountName: argo-workflow
+
+  templates:
+    - name: main
+      steps:
+        - - name: basic-container
+            template: basic-example
+        - - name: advanced-container
+            template: advanced-example
+
+    # ============================================================
+    # Basic Container Example
+    # ============================================================
+    - name: basic-example
+      container:
+        image: alpine:latest
+        command: [sh, -c]
+        args:
+          - |
+            echo "============================================"
+            echo "  CONTAINER TEMPLATE - Basic Example"
+            echo "============================================"
+            echo "This is the simplest template type."
+            echo "Just specify: image, command, args"
+            echo ""
+            echo "Current date: $(date)"
+            echo "Hostname: $(hostname)"
+            echo "============================================"
+
+    # ============================================================
+    # Advanced Container Example with all options
+    # ============================================================
+    - name: advanced-example
+      container:
+        image: python:3.9-alpine
+        command: [python, -c]
+        args:
+          - |
+            import os
+            import socket
+            print("=" * 44)
+            print("  CONTAINER TEMPLATE - Advanced Example")
+            print("=" * 44)
+            print(f"Environment Variable: {os.environ.get('MY_VAR', 'not set')}")
+            print(f"Secret Variable: {os.environ.get('SECRET_VAR', 'not set')}")
+            print(f"Working Directory: {os.getcwd()}")
+            print("=" * 44)
+
+        # Environment Variables
+        env:
+          - name: MY_VAR
+            value: "hello-world"
+          - name: POD_NAME
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.name
+          # From Secret (if exists)
+          # - name: SECRET_VAR
+          #   valueFrom:
+          #     secretKeyRef:
+          #       name: my-secret
+          #       key: password
+
+        # Working Directory
+        workingDir: /tmp
+
+        # Volume Mounts (requires volumes in workflow spec)
+        # volumeMounts:
+        #   - name: data-volume
+        #     mountPath: /data
+
+        # Security Context
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 1000
+
+# ============================================================
+# CONTAINER TEMPLATE KEY POINTS:
+#
+# Required Fields:
+#   - image: Container image to run
+#
+# Optional Fields:
+#   - command: Override container entrypoint
+#   - args: Arguments to command
+#   - env: Environment variables
+#   - envFrom: Env from ConfigMap/Secret
+#   - workingDir: Working directory
+#   - resources: CPU/memory limits
+#   - volumeMounts: Mount volumes
+#   - securityContext: Security settings
+#   - imagePullPolicy: Always/IfNotPresent/Never
+#
+# WHEN TO USE:
+#   - Running existing Docker images
+#   - CLI tools (aws, kubectl, terraform)
+#   - Pre-built applications
+#   - Any containerized workload
+#
+# ============================================================

@@ -1,0 +1,647 @@
+# ============================================================
+# Data Processing Pipeline - Real World Example
+# ============================================================
+# ETL pipeline that extracts data from multiple sources,
+# transforms it, and loads to a data warehouse.
+#
+# FEATURES DEMONSTRATED:
+#   - Loops (withItems, withParam)
+#   - Dynamic task generation
+#   - Artifacts for data passing
+#   - Parallel processing
+#   - Error handling and retry
+#   - Conditional execution
+#   - Resource templates
+#   - Exit handlers for cleanup
+#
+# Run: argo submit -n argo 02-data-processing-pipeline.yaml --watch
+# ============================================================
+
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: data-pipeline-
+  labels:
+    app: data-processing
+    team: data-engineering
+spec:
+  entrypoint: main-pipeline
+  serviceAccountName: argo-workflow
+  activeDeadlineSeconds: 3600  # 1 hour max
+  onExit: cleanup-handler
+
+  # ============================================================
+  # PARAMETERS
+  # ============================================================
+  arguments:
+    parameters:
+      - name: run-date
+        value: "2024-01-15"
+      - name: data-sources
+        value: '["customers", "orders", "products", "inventory"]'
+      - name: output-bucket
+        value: "data-warehouse"
+      - name: enable-quality-checks
+        value: "true"
+
+  templates:
+    # ============================================================
+    # MAIN PIPELINE
+    # ============================================================
+    - name: main-pipeline
+      dag:
+        tasks:
+          # ------------------------------------------------------
+          # STAGE 1: Extract from multiple sources (parallel)
+          # ------------------------------------------------------
+          - name: extract-data
+            template: extract-sources
+            arguments:
+              parameters:
+                - name: sources
+                  value: "{{workflow.parameters.data-sources}}"
+                - name: run-date
+                  value: "{{workflow.parameters.run-date}}"
+
+          # ------------------------------------------------------
+          # STAGE 2: Data Quality Checks
+          # ------------------------------------------------------
+          - name: quality-checks
+            dependencies: [extract-data]
+            template: run-quality-checks
+            arguments:
+              artifacts:
+                - name: extracted-data
+                  from: "{{tasks.extract-data.outputs.artifacts.combined-data}}"
+            when: "{{workflow.parameters.enable-quality-checks}} == 'true'"
+
+          # ------------------------------------------------------
+          # STAGE 3: Transform Data
+          # ------------------------------------------------------
+          - name: transform-data
+            dependencies: [extract-data, quality-checks]
+            template: transform-pipeline
+            arguments:
+              artifacts:
+                - name: input-data
+                  from: "{{tasks.extract-data.outputs.artifacts.combined-data}}"
+
+          # ------------------------------------------------------
+          # STAGE 4: Load to Warehouse
+          # ------------------------------------------------------
+          - name: load-warehouse
+            dependencies: [transform-data]
+            template: load-to-warehouse
+            arguments:
+              artifacts:
+                - name: transformed-data
+                  from: "{{tasks.transform-data.outputs.artifacts.output-data}}"
+              parameters:
+                - name: bucket
+                  value: "{{workflow.parameters.output-bucket}}"
+
+          # ------------------------------------------------------
+          # STAGE 5: Generate Reports
+          # ------------------------------------------------------
+          - name: generate-reports
+            dependencies: [load-warehouse]
+            template: generate-analytics-reports
+
+          # ------------------------------------------------------
+          # STAGE 6: Notify Completion
+          # ------------------------------------------------------
+          - name: send-notification
+            dependencies: [generate-reports]
+            template: notify-completion
+            arguments:
+              parameters:
+                - name: status
+                  value: "success"
+
+    # ============================================================
+    # EXTRACT SOURCES (Loop over data sources)
+    # ============================================================
+    - name: extract-sources
+      inputs:
+        parameters:
+          - name: sources
+          - name: run-date
+      steps:
+        # Extract each source in parallel using loop
+        - - name: extract
+            template: extract-single-source
+            arguments:
+              parameters:
+                - name: source-name
+                  value: "{{item}}"
+                - name: run-date
+                  value: "{{inputs.parameters.run-date}}"
+            withParam: "{{inputs.parameters.sources}}"
+
+        # Combine all extracted data
+        - - name: combine
+            template: combine-extracts
+            arguments:
+              parameters:
+                - name: source-count
+                  value: "4"
+
+      outputs:
+        artifacts:
+          - name: combined-data
+            from: "{{steps.combine.outputs.artifacts.combined}}"
+
+    # ============================================================
+    # EXTRACT SINGLE SOURCE
+    # ============================================================
+    - name: extract-single-source
+      inputs:
+        parameters:
+          - name: source-name
+          - name: run-date
+      retryStrategy:
+        limit: 3
+        backoff:
+          duration: "30s"
+          factor: 2
+      activeDeadlineSeconds: 600
+      container:
+        image: python:3.9-alpine
+        command: [python, -c]
+        args:
+          - |
+            import json
+            import random
+
+            source = "{{inputs.parameters.source-name}}"
+            run_date = "{{inputs.parameters.run-date}}"
+
+            print("=" * 44)
+            print(f"  EXTRACTING: {source.upper()}")
+            print("=" * 44)
+            print(f"Source: {source}")
+            print(f"Date: {run_date}")
+            print()
+
+            # Simulated extraction
+            import time
+            time.sleep(random.randint(2, 5))
+
+            # Generate sample data
+            if source == "customers":
+                data = [
+                    {"id": i, "name": f"Customer_{i}", "email": f"c{i}@example.com"}
+                    for i in range(1, 101)
+                ]
+            elif source == "orders":
+                data = [
+                    {"id": i, "customer_id": random.randint(1, 100), "amount": random.uniform(10, 500)}
+                    for i in range(1, 501)
+                ]
+            elif source == "products":
+                data = [
+                    {"id": i, "name": f"Product_{i}", "price": random.uniform(5, 200)}
+                    for i in range(1, 51)
+                ]
+            else:  # inventory
+                data = [
+                    {"product_id": i, "quantity": random.randint(0, 1000)}
+                    for i in range(1, 51)
+                ]
+
+            # Write to output file
+            output = {
+                "source": source,
+                "run_date": run_date,
+                "record_count": len(data),
+                "data": data
+            }
+
+            with open(f"/tmp/{source}_extract.json", "w") as f:
+                json.dump(output, f, indent=2)
+
+            print(f"Extracted {len(data)} records")
+            print(f"Output: /tmp/{source}_extract.json")
+            print("=" * 44)
+      outputs:
+        artifacts:
+          - name: source-data
+            path: /tmp/
+            archive:
+              none: {}
+
+    # ============================================================
+    # COMBINE EXTRACTS
+    # ============================================================
+    - name: combine-extracts
+      inputs:
+        parameters:
+          - name: source-count
+      container:
+        image: python:3.9-alpine
+        command: [python, -c]
+        args:
+          - |
+            import json
+            import os
+
+            print("=" * 44)
+            print("  COMBINING EXTRACTS")
+            print("=" * 44)
+
+            # Simulated combination of data
+            combined = {
+                "sources": ["customers", "orders", "products", "inventory"],
+                "total_records": 701,
+                "extraction_status": "complete",
+                "data_summary": {
+                    "customers": 100,
+                    "orders": 500,
+                    "products": 50,
+                    "inventory": 50
+                }
+            }
+
+            with open("/tmp/combined_data.json", "w") as f:
+                json.dump(combined, f, indent=2)
+
+            print(f"Combined {len(combined['sources'])} sources")
+            print(f"Total records: {combined['total_records']}")
+            print("=" * 44)
+      outputs:
+        artifacts:
+          - name: combined
+            path: /tmp/combined_data.json
+
+    # ============================================================
+    # DATA QUALITY CHECKS
+    # ============================================================
+    - name: run-quality-checks
+      inputs:
+        artifacts:
+          - name: extracted-data
+            path: /tmp/input_data.json
+      container:
+        image: python:3.9-alpine
+        command: [python, -c]
+        args:
+          - |
+            import json
+
+            print("=" * 44)
+            print("  DATA QUALITY CHECKS")
+            print("=" * 44)
+
+            # Load data
+            with open("/tmp/input_data.json") as f:
+                data = json.load(f)
+
+            checks = []
+
+            # Check 1: Record count validation
+            print("Running record count validation...")
+            checks.append({"name": "record_count", "status": "PASS", "details": "All sources have records"})
+
+            # Check 2: Null value check
+            print("Running null value check...")
+            checks.append({"name": "null_values", "status": "PASS", "details": "No unexpected nulls"})
+
+            # Check 3: Data type validation
+            print("Running data type validation...")
+            checks.append({"name": "data_types", "status": "PASS", "details": "All types valid"})
+
+            # Check 4: Referential integrity
+            print("Running referential integrity check...")
+            checks.append({"name": "referential_integrity", "status": "PASS", "details": "All foreign keys valid"})
+
+            # Check 5: Duplicate detection
+            print("Running duplicate detection...")
+            checks.append({"name": "duplicates", "status": "PASS", "details": "No duplicates found"})
+
+            # Generate quality report
+            report = {
+                "total_checks": len(checks),
+                "passed": sum(1 for c in checks if c["status"] == "PASS"),
+                "failed": sum(1 for c in checks if c["status"] == "FAIL"),
+                "checks": checks
+            }
+
+            with open("/tmp/quality_report.json", "w") as f:
+                json.dump(report, f, indent=2)
+
+            print()
+            print(f"Quality Checks: {report['passed']}/{report['total_checks']} PASSED")
+
+            if report["failed"] > 0:
+                print("WARNING: Some quality checks failed!")
+                exit(1)
+
+            print("All quality checks passed! ✓")
+            print("=" * 44)
+      outputs:
+        artifacts:
+          - name: quality-report
+            path: /tmp/quality_report.json
+
+    # ============================================================
+    # TRANSFORM PIPELINE (with multiple transformations)
+    # ============================================================
+    - name: transform-pipeline
+      inputs:
+        artifacts:
+          - name: input-data
+            path: /tmp/input_data.json
+      steps:
+        # Run transformations in sequence
+        - - name: clean-data
+            template: transform-clean
+
+        - - name: normalize-data
+            template: transform-normalize
+            arguments:
+              artifacts:
+                - name: input
+                  from: "{{steps.clean-data.outputs.artifacts.output}}"
+
+        - - name: aggregate-data
+            template: transform-aggregate
+            arguments:
+              artifacts:
+                - name: input
+                  from: "{{steps.normalize-data.outputs.artifacts.output}}"
+
+        - - name: enrich-data
+            template: transform-enrich
+            arguments:
+              artifacts:
+                - name: input
+                  from: "{{steps.aggregate-data.outputs.artifacts.output}}"
+
+      outputs:
+        artifacts:
+          - name: output-data
+            from: "{{steps.enrich-data.outputs.artifacts.output}}"
+
+    - name: transform-clean
+      container:
+        image: python:3.9-alpine
+        command: [sh, -c]
+        args:
+          - |
+            echo "Transform: CLEAN"
+            echo "- Removing invalid characters"
+            echo "- Trimming whitespace"
+            echo "- Standardizing formats"
+            sleep 2
+            echo '{"stage": "clean", "records_processed": 701, "records_removed": 5}' > /tmp/cleaned.json
+      outputs:
+        artifacts:
+          - name: output
+            path: /tmp/cleaned.json
+
+    - name: transform-normalize
+      inputs:
+        artifacts:
+          - name: input
+            path: /tmp/input.json
+      container:
+        image: python:3.9-alpine
+        command: [sh, -c]
+        args:
+          - |
+            echo "Transform: NORMALIZE"
+            echo "- Converting currencies to USD"
+            echo "- Standardizing date formats"
+            echo "- Normalizing addresses"
+            sleep 2
+            echo '{"stage": "normalize", "records_processed": 696}' > /tmp/normalized.json
+      outputs:
+        artifacts:
+          - name: output
+            path: /tmp/normalized.json
+
+    - name: transform-aggregate
+      inputs:
+        artifacts:
+          - name: input
+            path: /tmp/input.json
+      container:
+        image: python:3.9-alpine
+        command: [sh, -c]
+        args:
+          - |
+            echo "Transform: AGGREGATE"
+            echo "- Calculating daily totals"
+            echo "- Computing running averages"
+            echo "- Generating summaries"
+            sleep 2
+            echo '{"stage": "aggregate", "aggregations_created": 25}' > /tmp/aggregated.json
+      outputs:
+        artifacts:
+          - name: output
+            path: /tmp/aggregated.json
+
+    - name: transform-enrich
+      inputs:
+        artifacts:
+          - name: input
+            path: /tmp/input.json
+      container:
+        image: python:3.9-alpine
+        command: [sh, -c]
+        args:
+          - |
+            echo "Transform: ENRICH"
+            echo "- Adding geographic data"
+            echo "- Joining with reference data"
+            echo "- Computing derived fields"
+            sleep 2
+            echo '{"stage": "enrich", "fields_added": 15, "final_records": 696}' > /tmp/enriched.json
+      outputs:
+        artifacts:
+          - name: output
+            path: /tmp/enriched.json
+
+    # ============================================================
+    # LOAD TO WAREHOUSE
+    # ============================================================
+    - name: load-to-warehouse
+      inputs:
+        artifacts:
+          - name: transformed-data
+            path: /tmp/data.json
+        parameters:
+          - name: bucket
+      retryStrategy:
+        limit: 3
+        backoff:
+          duration: "30s"
+          factor: 2
+      container:
+        image: python:3.9-alpine
+        command: [python, -c]
+        args:
+          - |
+            import json
+
+            bucket = "{{inputs.parameters.bucket}}"
+
+            print("=" * 44)
+            print("  LOAD TO DATA WAREHOUSE")
+            print("=" * 44)
+            print(f"Target bucket: {bucket}")
+            print()
+
+            # Simulated load operations
+            tables = [
+                {"table": "dim_customers", "rows": 100, "status": "loaded"},
+                {"table": "dim_products", "rows": 50, "status": "loaded"},
+                {"table": "fact_orders", "rows": 500, "status": "loaded"},
+                {"table": "fact_inventory", "rows": 50, "status": "loaded"}
+            ]
+
+            import time
+            for table in tables:
+                print(f"Loading {table['table']}...")
+                time.sleep(1)
+                print(f"  ✓ Loaded {table['rows']} rows")
+
+            # Generate load report
+            report = {
+                "bucket": bucket,
+                "tables_loaded": len(tables),
+                "total_rows": sum(t["rows"] for t in tables),
+                "status": "success",
+                "tables": tables
+            }
+
+            with open("/tmp/load_report.json", "w") as f:
+                json.dump(report, f, indent=2)
+
+            print()
+            print(f"Total: {report['total_rows']} rows loaded to {report['tables_loaded']} tables")
+            print("=" * 44)
+      outputs:
+        artifacts:
+          - name: load-report
+            path: /tmp/load_report.json
+
+    # ============================================================
+    # GENERATE REPORTS
+    # ============================================================
+    - name: generate-analytics-reports
+      steps:
+        # Generate multiple reports in parallel
+        - - name: daily-summary
+            template: generate-report
+            arguments:
+              parameters:
+                - name: report-name
+                  value: "daily_summary"
+          - name: customer-analytics
+            template: generate-report
+            arguments:
+              parameters:
+                - name: report-name
+                  value: "customer_analytics"
+          - name: sales-metrics
+            template: generate-report
+            arguments:
+              parameters:
+                - name: report-name
+                  value: "sales_metrics"
+
+    - name: generate-report
+      inputs:
+        parameters:
+          - name: report-name
+      container:
+        image: python:3.9-alpine
+        command: [sh, -c]
+        args:
+          - |
+            echo "Generating report: {{inputs.parameters.report-name}}"
+            sleep 2
+            echo "Report generated successfully!"
+
+    # ============================================================
+    # NOTIFY COMPLETION
+    # ============================================================
+    - name: notify-completion
+      inputs:
+        parameters:
+          - name: status
+      container:
+        image: alpine:latest
+        command: [sh, -c]
+        args:
+          - |
+            echo "============================================"
+            echo "  DATA PIPELINE COMPLETE"
+            echo "============================================"
+            echo "Status: {{inputs.parameters.status}}"
+            echo "Run Date: {{workflow.parameters.run-date}}"
+            echo "Duration: {{workflow.duration}}"
+            echo ""
+            echo "Summary:"
+            echo "  - Sources extracted: 4"
+            echo "  - Records processed: 701"
+            echo "  - Tables loaded: 4"
+            echo "  - Reports generated: 3"
+            echo ""
+            echo "Sending notification to data team..."
+            echo "============================================"
+
+    # ============================================================
+    # CLEANUP HANDLER (Exit handler)
+    # ============================================================
+    - name: cleanup-handler
+      steps:
+        - - name: log-completion
+            template: log-pipeline-status
+
+        - - name: cleanup-temp-files
+            template: cleanup-temp
+            when: "{{workflow.status}} == Succeeded"
+
+          - name: preserve-debug-info
+            template: preserve-debug
+            when: "{{workflow.status}} == Failed"
+
+    - name: log-pipeline-status
+      container:
+        image: alpine:latest
+        command: [sh, -c]
+        args:
+          - |
+            echo "Pipeline Status: {{workflow.status}}"
+            echo "Duration: {{workflow.duration}}"
+
+    - name: cleanup-temp
+      container:
+        image: alpine:latest
+        command: [echo, "Cleaning up temporary files..."]
+
+    - name: preserve-debug
+      container:
+        image: alpine:latest
+        command: [sh, -c]
+        args:
+          - |
+            echo "Preserving debug information..."
+            echo "Workflow: {{workflow.name}}"
+            echo "Failures: {{workflow.failures}}"
+
+# ============================================================
+# FEATURES DEMONSTRATED:
+#
+# 1. withParam Loop - Extract multiple sources in parallel
+# 2. Steps within DAG - Complex orchestration patterns
+# 3. Artifact Passing - Data flows through transformation stages
+# 4. Retry Strategy - Handle transient failures
+# 5. Conditional Execution - Quality checks toggle
+# 6. Exit Handler - Cleanup and status logging
+# 7. Parallel Tasks - Multiple reports generated simultaneously
+# 8. Timeouts - Prevent runaway tasks
+#
+# ============================================================

@@ -1,0 +1,200 @@
+# ============================================================
+# Suspend Template - Pause Workflow Execution
+# ============================================================
+# Pauses workflow for manual approval or timed delays
+# Great for: Approvals, waiting periods, gates
+#
+# Run: argo submit -n argo 04-suspend-template.yaml --watch
+# Resume: argo resume <workflow-name> -n argo
+# ============================================================
+
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: suspend-template-
+spec:
+  entrypoint: main
+  serviceAccountName: argo-workflow
+
+  templates:
+    - name: main
+      steps:
+        # Stage 1: Development
+        - - name: deploy-dev
+            template: deploy
+            arguments:
+              parameters:
+                - name: environment
+                  value: "development"
+
+        # Gate 1: Auto-resume after 10 seconds (simulated testing)
+        - - name: automated-tests
+            template: timed-suspend
+
+        # Stage 2: Staging
+        - - name: deploy-staging
+            template: deploy
+            arguments:
+              parameters:
+                - name: environment
+                  value: "staging"
+
+        # Gate 2: Manual approval required
+        - - name: manual-approval
+            template: manual-suspend
+
+        # Stage 3: Production (only after approval)
+        - - name: deploy-prod
+            template: deploy
+            arguments:
+              parameters:
+                - name: environment
+                  value: "production"
+
+        - - name: complete
+            template: completion-message
+
+    # ============================================================
+    # Timed Suspend - Auto-resume after duration
+    # ============================================================
+    - name: timed-suspend
+      suspend:
+        duration: "10s"    # Resume after 10 seconds
+      # Useful for:
+      # - Waiting for external processes
+      # - Rate limiting
+      # - Simulating delays in testing
+
+    # ============================================================
+    # Manual Suspend - Requires explicit resume
+    # ============================================================
+    - name: manual-suspend
+      suspend: {}
+      # No duration = wait indefinitely
+      # Resume with: argo resume <workflow-name> -n argo
+      #
+      # In production, this could be:
+      # - Manual approval gate
+      # - Waiting for external sign-off
+      # - Human verification step
+
+    # ============================================================
+    # Deploy Template
+    # ============================================================
+    - name: deploy
+      inputs:
+        parameters:
+          - name: environment
+      container:
+        image: alpine:latest
+        command: [sh, -c]
+        args:
+          - |
+            echo "============================================"
+            echo "  Deploying to: {{inputs.parameters.environment}}"
+            echo "============================================"
+            echo "Running deployment scripts..."
+            sleep 3
+            echo "Deployment to {{inputs.parameters.environment}} complete!"
+            echo "============================================"
+
+    # ============================================================
+    # Completion Message
+    # ============================================================
+    - name: completion-message
+      container:
+        image: alpine:latest
+        command: [sh, -c]
+        args:
+          - |
+            echo "============================================"
+            echo "  DEPLOYMENT PIPELINE COMPLETE!"
+            echo "============================================"
+            echo "All environments deployed successfully:"
+            echo "  - Development"
+            echo "  - Staging"
+            echo "  - Production"
+            echo "============================================"
+
+---
+# ============================================================
+# Example: Approval with Intermediate Inputs
+# ============================================================
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: suspend-with-inputs-
+spec:
+  entrypoint: main
+  serviceAccountName: argo-workflow
+
+  templates:
+    - name: main
+      steps:
+        - - name: prepare
+            template: prepare-release
+
+        - - name: approval-gate
+            template: wait-for-approval
+
+        # After resume, you can set parameters:
+        # argo resume <workflow> -n argo --set approved-by=john@example.com
+        - - name: release
+            template: do-release
+
+    - name: prepare-release
+      container:
+        image: alpine:latest
+        command: [echo, "Release prepared and ready for approval"]
+
+    - name: wait-for-approval
+      suspend: {}
+      # Resume with:
+      # argo resume <workflow-name> -n argo
+
+    - name: do-release
+      container:
+        image: alpine:latest
+        command: [sh, -c]
+        args:
+          - |
+            echo "Release approved! Proceeding with deployment..."
+
+# ============================================================
+# SUSPEND TEMPLATE KEY POINTS:
+#
+# Types:
+#   1. Timed: suspend: { duration: "30s" }
+#      - Auto-resumes after specified duration
+#      - Good for rate limiting, waiting periods
+#
+#   2. Manual: suspend: {}
+#      - Waits indefinitely
+#      - Requires: argo resume <workflow> -n argo
+#
+# Resume Commands:
+#   # Resume workflow
+#   argo resume my-workflow -n argo
+#
+#   # Resume with node selector (resume specific step)
+#   argo resume my-workflow -n argo --node-field-selector displayName=approval-gate
+#
+# Duration Format:
+#   - "30s"  - 30 seconds
+#   - "5m"   - 5 minutes
+#   - "1h"   - 1 hour
+#   - "24h"  - 24 hours
+#
+# WHEN TO USE:
+#   - Manual approval gates (prod deployment)
+#   - Waiting for external processes
+#   - Rate limiting API calls
+#   - Business hour restrictions
+#   - Quality gates
+#
+# COMMON PATTERNS:
+#   1. Dev -> Staging -> [Approval] -> Production
+#   2. Build -> [Wait for tests] -> Deploy
+#   3. Scale up -> [Wait period] -> Verify -> Scale down
+#
+# ============================================================

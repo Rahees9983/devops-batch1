@@ -1,0 +1,353 @@
+# ============================================================
+# Timeout Configuration - Preventing Runaway Workflows
+# ============================================================
+# Timeouts prevent workflows/tasks from running forever
+# Can be set at workflow level, template level, or both
+#
+# Run: argo submit -n argo 05-timeout.yaml --watch
+# ============================================================
+
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: timeout-demo-
+spec:
+  entrypoint: main
+  serviceAccountName: argo-workflow
+
+  # ============================================================
+  # WORKFLOW-LEVEL TIMEOUT
+  # ============================================================
+  # Applies to entire workflow
+  activeDeadlineSeconds: 600  # 10 minutes max for entire workflow
+
+  templates:
+    - name: main
+      steps:
+        - - name: quick-task
+            template: quick-task
+
+        - - name: template-timeout
+            template: task-with-timeout
+
+        - - name: long-task-bounded
+            template: bounded-long-task
+
+    # ============================================================
+    # Quick Task (no timeout, finishes fast)
+    # ============================================================
+    - name: quick-task
+      container:
+        image: alpine:latest
+        command: [sh, -c]
+        args:
+          - |
+            echo "============================================"
+            echo "  QUICK TASK (No Timeout)"
+            echo "============================================"
+            echo "This task finishes quickly..."
+            sleep 2
+            echo "Done!"
+            echo "============================================"
+
+    # ============================================================
+    # Task with Template-Level Timeout
+    # ============================================================
+    - name: task-with-timeout
+      # Template-level timeout - THIS task only
+      activeDeadlineSeconds: 30  # 30 seconds max
+
+      container:
+        image: alpine:latest
+        command: [sh, -c]
+        args:
+          - |
+            echo "============================================"
+            echo "  TASK WITH 30s TIMEOUT"
+            echo "============================================"
+            echo "This task has a 30 second timeout."
+            echo "If it runs longer, it will be killed."
+            echo ""
+            for i in $(seq 1 10); do
+              echo "Working... ($i/10)"
+              sleep 2
+            done
+            echo ""
+            echo "Completed within timeout!"
+            echo "============================================"
+
+    # ============================================================
+    # Long Task with Reasonable Timeout
+    # ============================================================
+    - name: bounded-long-task
+      activeDeadlineSeconds: 120  # 2 minutes max
+
+      container:
+        image: alpine:latest
+        command: [sh, -c]
+        args:
+          - |
+            echo "============================================"
+            echo "  BOUNDED LONG TASK (2min timeout)"
+            echo "============================================"
+            echo "Simulating a longer-running task..."
+            echo ""
+            for i in $(seq 1 30); do
+              echo "Processing batch $i/30..."
+              sleep 2
+            done
+            echo ""
+            echo "Long task completed!"
+            echo "============================================"
+
+---
+# ============================================================
+# Example: Timeout That Will Trigger
+# ============================================================
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: timeout-trigger-
+spec:
+  entrypoint: will-timeout
+  serviceAccountName: argo-workflow
+
+  templates:
+    - name: will-timeout
+      # Short timeout - will trigger!
+      activeDeadlineSeconds: 10
+
+      container:
+        image: alpine:latest
+        command: [sh, -c]
+        args:
+          - |
+            echo "============================================"
+            echo "  TASK THAT WILL TIMEOUT"
+            echo "============================================"
+            echo "This task sleeps for 60s but has 10s timeout."
+            echo "It WILL be killed by timeout!"
+            echo ""
+            for i in $(seq 1 60); do
+              echo "Sleeping... ($i/60)"
+              sleep 1
+            done
+            echo "This line will never be reached!"
+
+---
+# ============================================================
+# Example: Timeout with Retry
+# ============================================================
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: timeout-retry-
+spec:
+  entrypoint: retry-on-timeout
+  serviceAccountName: argo-workflow
+
+  templates:
+    - name: retry-on-timeout
+      # Retry strategy for timeout failures
+      retryStrategy:
+        limit: 3
+        retryPolicy: "Always"
+        backoff:
+          duration: "5s"
+          factor: 2
+
+      # Short timeout
+      activeDeadlineSeconds: 15
+
+      container:
+        image: alpine:latest
+        command: [sh, -c]
+        args:
+          - |
+            echo "============================================"
+            echo "  FLAKY TASK WITH TIMEOUT"
+            echo "============================================"
+            echo "This task may or may not complete in time."
+            echo "Has 15s timeout with 3 retries."
+            echo ""
+            # Random delay between 5 and 25 seconds
+            DELAY=$((5 + RANDOM % 20))
+            echo "Random delay: ${DELAY}s"
+            sleep $DELAY
+            echo "Completed!"
+
+---
+# ============================================================
+# Example: Different Timeouts for Different Tasks
+# ============================================================
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: timeout-mixed-
+spec:
+  entrypoint: main
+  serviceAccountName: argo-workflow
+  activeDeadlineSeconds: 300  # 5 min total workflow timeout
+
+  templates:
+    - name: main
+      dag:
+        tasks:
+          - name: fast-task
+            template: fast-template
+
+          - name: medium-task
+            template: medium-template
+
+          - name: slow-task
+            template: slow-template
+
+          - name: final
+            dependencies: [fast-task, medium-task, slow-task]
+            template: summary
+
+    # 10 second timeout
+    - name: fast-template
+      activeDeadlineSeconds: 10
+      container:
+        image: alpine:latest
+        command: [sh, -c]
+        args:
+          - |
+            echo "Fast task (10s timeout)"
+            sleep 3
+            echo "Done!"
+
+    # 30 second timeout
+    - name: medium-template
+      activeDeadlineSeconds: 30
+      container:
+        image: alpine:latest
+        command: [sh, -c]
+        args:
+          - |
+            echo "Medium task (30s timeout)"
+            sleep 10
+            echo "Done!"
+
+    # 60 second timeout
+    - name: slow-template
+      activeDeadlineSeconds: 60
+      container:
+        image: alpine:latest
+        command: [sh, -c]
+        args:
+          - |
+            echo "Slow task (60s timeout)"
+            sleep 20
+            echo "Done!"
+
+    - name: summary
+      container:
+        image: alpine:latest
+        command: [sh, -c]
+        args:
+          - |
+            echo "============================================"
+            echo "  ALL TASKS COMPLETED WITHIN TIMEOUTS"
+            echo "============================================"
+            echo "Fast task: 10s timeout (used ~3s)"
+            echo "Medium task: 30s timeout (used ~10s)"
+            echo "Slow task: 60s timeout (used ~20s)"
+            echo "============================================"
+
+---
+# ============================================================
+# Example: Pod-Level Timeout vs Task Timeout
+# ============================================================
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: timeout-pod-level-
+spec:
+  entrypoint: main
+  serviceAccountName: argo-workflow
+
+  # Workflow timeout
+  activeDeadlineSeconds: 180
+
+  # Pod-level settings
+  podSpecPatch: |
+    terminationGracePeriodSeconds: 30
+    activeDeadlineSeconds: 60
+
+  templates:
+    - name: main
+      steps:
+        - - name: test
+            template: test-task
+
+    - name: test-task
+      # Template-level timeout (takes precedence for this template)
+      activeDeadlineSeconds: 45
+
+      container:
+        image: alpine:latest
+        command: [sh, -c]
+        args:
+          - |
+            echo "Task with 45s template timeout"
+            echo "Pod has 60s timeout"
+            echo "Workflow has 180s timeout"
+            echo ""
+            echo "Template timeout wins for this task!"
+            sleep 10
+            echo "Done!"
+
+# ============================================================
+# TIMEOUT CONFIGURATION KEY POINTS:
+#
+# TIMEOUT LEVELS:
+#   1. Workflow Level - Entire workflow
+#      spec:
+#        activeDeadlineSeconds: 3600  # 1 hour
+#
+#   2. Template Level - Specific template
+#      templates:
+#        - name: my-task
+#          activeDeadlineSeconds: 300  # 5 minutes
+#
+#   3. Pod Level - Via podSpecPatch
+#      podSpecPatch: |
+#        activeDeadlineSeconds: 600
+#
+# PRECEDENCE:
+#   Template-level > Pod-level > Workflow-level
+#
+# TIME FORMATS:
+#   activeDeadlineSeconds: 60      # 1 minute
+#   activeDeadlineSeconds: 300     # 5 minutes
+#   activeDeadlineSeconds: 3600    # 1 hour
+#   activeDeadlineSeconds: 86400   # 24 hours
+#
+# WHAT HAPPENS ON TIMEOUT:
+#   1. Task is marked as Failed
+#   2. Container is killed (SIGTERM, then SIGKILL)
+#   3. Retry strategy kicks in (if configured)
+#   4. Exit handlers run (if configured)
+#
+# COMBINING WITH RETRY:
+#   retryStrategy:
+#     limit: 3
+#   activeDeadlineSeconds: 30
+#   # Each attempt has 30s timeout, up to 3 attempts
+#
+# USE CASES:
+#   1. Prevent runaway tasks from consuming resources
+#   2. Enforce SLAs on task duration
+#   3. Quick failure detection for stuck tasks
+#   4. Cost control (limit compute time)
+#
+# BEST PRACTICES:
+#   1. Always set workflow-level timeout as safety net
+#   2. Set reasonable template timeouts based on expected duration
+#   3. Add buffer (e.g., if task takes 30s, set 60s timeout)
+#   4. Combine with retry for transient timeout issues
+#   5. Use shorter timeouts in development, longer in production
+#
+# ============================================================

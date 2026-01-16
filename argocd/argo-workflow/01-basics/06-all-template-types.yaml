@@ -1,0 +1,329 @@
+# ============================================================
+# All Argo Workflow Template Types - Complete Examples
+# ============================================================
+#
+# TEMPLATE DEFINITIONS (what to run):
+#   01. Container     - Run a container
+#   02. Script        - Run inline code
+#   03. Resource      - Create/manage K8s resources
+#   04. Suspend       - Pause workflow (manual approval)
+#   05. Container Set - Multiple containers in one pod
+#   06. HTTP          - Make HTTP requests
+#   07. Plugin        - Custom executor plugins
+#
+# TEMPLATE INVOCATORS (how to orchestrate):
+#   01. Steps         - Sequential/parallel execution
+#   02. DAG           - Dependency-based execution
+#
+# Run: argo submit -n argo 06-all-template-types.yaml --watch
+# ============================================================
+
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: all-template-types-
+spec:
+  entrypoint: main
+  serviceAccountName: argo-workflow
+
+  templates:
+    # ============================================================
+    # MAIN: Using STEPS Template Invocator
+    # ============================================================
+    - name: main
+      steps:
+        # Sequential execution
+        - - name: demo-container
+            template: container-template
+
+        - - name: demo-script
+            template: script-template
+
+        # Parallel execution (same level)
+        - - name: demo-http
+            template: http-template
+          - name: demo-container-set
+            template: container-set-template
+
+        - - name: demo-suspend
+            template: suspend-template
+
+        - - name: demo-dag
+            template: dag-example
+
+    # ============================================================
+    # 01. CONTAINER TEMPLATE
+    # ============================================================
+    # Most common - runs a single container
+    # Like a Kubernetes Pod spec
+    # ============================================================
+    - name: container-template
+      container:
+        image: alpine:latest
+        command: [sh, -c]
+        args:
+          - |
+            echo "============================================"
+            echo "  01. CONTAINER TEMPLATE"
+            echo "============================================"
+            echo "This is the most basic template type."
+            echo "It runs a single container with:"
+            echo "  - Image: alpine:latest"
+            echo "  - Command: sh -c"
+            echo ""
+            echo "Use cases:"
+            echo "  - Running CLI tools"
+            echo "  - Executing pre-built applications"
+            echo "  - Any containerized workload"
+            echo "============================================"
+
+        # Optional: Environment variables
+        env:
+          - name: MY_VAR
+            value: "hello"
+
+    # ============================================================
+    # 02. SCRIPT TEMPLATE
+    # ============================================================
+    # Runs inline code - Python, Bash, Node.js, etc.
+    # Code is embedded in the workflow YAML
+    # ============================================================
+    - name: script-template
+      script:
+        image: python:3.9-alpine
+        command: [python]
+        source: |
+          import json
+          import sys
+          from datetime import datetime
+
+          print("=" * 44)
+          print("  02. SCRIPT TEMPLATE")
+          print("=" * 44)
+          print(f"Python version: {sys.version_info.major}.{sys.version_info.minor}")
+          print(f"Current time: {datetime.now()}")
+          print("")
+          print("Use cases:")
+          print("  - Quick scripts without building images")
+          print("  - Data processing")
+          print("  - Calculations and transformations")
+          print("")
+
+          # You can output structured data
+          result = {
+              "status": "success",
+              "processed_items": 42
+          }
+          print(f"Result: {json.dumps(result)}")
+          print("=" * 44)
+
+    # ============================================================
+    # 03. RESOURCE TEMPLATE
+    # ============================================================
+    # Creates/patches/deletes Kubernetes resources
+    # Great for provisioning infrastructure
+    # ============================================================
+    - name: resource-template
+      resource:
+        action: create          # create, patch, delete, apply
+        setOwnerReference: true # Delete with workflow
+        manifest: |
+          apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: workflow-created-cm-{{workflow.name}}
+            namespace: argo
+          data:
+            created-by: "argo-workflow"
+            workflow-name: "{{workflow.name}}"
+            message: |
+              This ConfigMap was created by a Resource template.
+              Use cases:
+                - Create Jobs, ConfigMaps, Secrets
+                - Provision infrastructure
+                - Dynamic resource creation
+
+    # ============================================================
+    # 04. SUSPEND TEMPLATE
+    # ============================================================
+    # Pauses workflow execution
+    # Useful for manual approvals or waiting
+    # ============================================================
+    - name: suspend-template
+      suspend:
+        duration: "5s"    # Auto-resume after 5 seconds
+        # Remove duration for manual approval:
+        # duration: ""    # Requires: argo resume <workflow-name>
+
+      # Note: For this demo, we use 5s timeout
+      # In production, you might want manual approval:
+      #
+      # suspend: {}
+      #
+      # Then resume with:
+      #   argo resume <workflow-name> -n argo
+
+    # ============================================================
+    # 05. CONTAINER SET TEMPLATE
+    # ============================================================
+    # Multiple containers in a single pod
+    # Containers share network and can share volumes
+    # ============================================================
+    - name: container-set-template
+      containerSet:
+        containers:
+          # Main application container
+          - name: main
+            image: alpine:latest
+            command: [sh, -c]
+            args:
+              - |
+                echo "============================================"
+                echo "  05. CONTAINER SET TEMPLATE"
+                echo "============================================"
+                echo "Multiple containers in ONE pod!"
+                echo ""
+                echo "Container: main"
+                echo "Waiting for sidecar to write data..."
+                sleep 3
+                echo ""
+                echo "Reading from shared volume:"
+                cat /mnt/data/message.txt 2>/dev/null || echo "(sidecar still working)"
+                echo ""
+                echo "Use cases:"
+                echo "  - Main app + sidecar pattern"
+                echo "  - Multiple related processes"
+                echo "  - Shared storage between containers"
+                echo "============================================"
+
+            volumeMounts:
+              - name: shared-data
+                mountPath: /mnt/data
+
+          # Sidecar container
+          - name: sidecar
+            image: alpine:latest
+            command: [sh, -c]
+            args:
+              - |
+                echo "Sidecar: Writing to shared volume..."
+                echo "Hello from sidecar container!" > /mnt/data/message.txt
+                echo "Timestamp: $(date)" >> /mnt/data/message.txt
+                echo "Sidecar: Done!"
+
+            volumeMounts:
+              - name: shared-data
+                mountPath: /mnt/data
+
+        # Shared volume between containers
+        volumes:
+          - name: shared-data
+            emptyDir: {}
+
+    # ============================================================
+    # 06. HTTP TEMPLATE
+    # ============================================================
+    # Makes HTTP requests (GET, POST, PUT, DELETE)
+    # No container needed - lightweight
+    # ============================================================
+    - name: http-template
+      http:
+        url: "https://httpbin.org/get"
+        method: "GET"
+        headers:
+          - name: "X-Custom-Header"
+            value: "argo-workflow"
+        successCondition: "response.statusCode == 200"
+        # For POST with body:
+        # body: '{"key": "value"}'
+
+      # Note: HTTP template output is available as:
+      # {{tasks.http-task.outputs.result}}
+
+    # ============================================================
+    # 02. DAG TEMPLATE INVOCATOR
+    # ============================================================
+    # Dependency-based execution (alternative to Steps)
+    # ============================================================
+    - name: dag-example
+      dag:
+        tasks:
+          - name: task-a
+            template: dag-task
+            arguments:
+              parameters:
+                - name: task-name
+                  value: "A (start)"
+
+          - name: task-b
+            dependencies: [task-a]
+            template: dag-task
+            arguments:
+              parameters:
+                - name: task-name
+                  value: "B (depends on A)"
+
+          - name: task-c
+            dependencies: [task-a]
+            template: dag-task
+            arguments:
+              parameters:
+                - name: task-name
+                  value: "C (depends on A)"
+
+          - name: task-d
+            dependencies: [task-b, task-c]
+            template: dag-task
+            arguments:
+              parameters:
+                - name: task-name
+                  value: "D (depends on B & C)"
+
+    - name: dag-task
+      inputs:
+        parameters:
+          - name: task-name
+      container:
+        image: alpine:latest
+        command: [sh, -c]
+        args:
+          - |
+            echo "DAG Task: {{inputs.parameters.task-name}}"
+            sleep 1
+
+# ============================================================
+# TEMPLATE TYPES SUMMARY:
+#
+# ┌─────────────────────────────────────────────────────────┐
+# │              TEMPLATE DEFINITIONS                        │
+# │           (What to run / execute)                        │
+# ├─────────────────┬───────────────────────────────────────┤
+# │ Container       │ Single container (most common)        │
+# │ Script          │ Inline code (Python, Bash, etc.)      │
+# │ Resource        │ Create K8s resources                  │
+# │ Suspend         │ Pause for approval/delay              │
+# │ Container Set   │ Multiple containers in one pod        │
+# │ HTTP            │ HTTP requests (no container)          │
+# │ Plugin          │ Custom executor (advanced)            │
+# └─────────────────┴───────────────────────────────────────┘
+#
+# ┌─────────────────────────────────────────────────────────┐
+# │              TEMPLATE INVOCATORS                         │
+# │           (How to orchestrate)                           │
+# ├─────────────────┬───────────────────────────────────────┤
+# │ Steps           │ Sequential/parallel by array level    │
+# │ DAG             │ Dependency-based execution            │
+# └─────────────────┴───────────────────────────────────────┘
+#
+# WHEN TO USE WHAT:
+#
+# Container     → Running existing tools/applications
+# Script        → Quick one-off scripts, prototyping
+# Resource      → Infrastructure provisioning
+# Suspend       → Manual approvals, waiting periods
+# Container Set → Sidecar patterns, related processes
+# HTTP          → API calls, webhooks, health checks
+# Steps         → Simple linear pipelines
+# DAG           → Complex dependencies
+#
+# ============================================================

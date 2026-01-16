@@ -1,0 +1,198 @@
+# ============================================================
+# WorkflowTemplates - Reusable Workflow Definitions
+# ============================================================
+# WorkflowTemplates are like functions - define once, use many times
+#
+# Apply template: kubectl apply -n argo -f 03-workflow-templates.yaml
+# Use template:   argo submit -n argo --from workflowtemplate/ci-template
+# ============================================================
+
+# WorkflowTemplate definition
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: ci-template
+  namespace: argo
+spec:
+  # Template-level arguments (with defaults)
+  arguments:
+    parameters:
+      - name: repo
+        value: "https://github.com/example/app"
+      - name: branch
+        value: "main"
+      - name: image-tag
+        value: "latest"
+
+  entrypoint: ci-pipeline
+
+  templates:
+    - name: ci-pipeline
+      dag:
+        tasks:
+          - name: clone
+            template: git-clone
+            arguments:
+              parameters:
+                - name: repo
+                  value: "{{workflow.parameters.repo}}"
+                - name: branch
+                  value: "{{workflow.parameters.branch}}"
+
+          - name: test
+            dependencies: [clone]
+            template: run-tests
+
+          - name: build
+            dependencies: [test]
+            template: build-image
+            arguments:
+              parameters:
+                - name: tag
+                  value: "{{workflow.parameters.image-tag}}"
+
+    - name: git-clone
+      inputs:
+        parameters:
+          - name: repo
+          - name: branch
+      container:
+        image: alpine/git
+        command: [sh, -c]
+        args:
+          - |
+            echo "Cloning {{inputs.parameters.repo}} ({{inputs.parameters.branch}})"
+            sleep 2
+            echo "Clone complete!"
+
+    - name: run-tests
+      container:
+        image: node:18-alpine
+        command: [sh, -c]
+        args:
+          - |
+            echo "Running tests..."
+            sleep 2
+            echo "All tests passed!"
+
+    - name: build-image
+      inputs:
+        parameters:
+          - name: tag
+      container:
+        image: alpine
+        command: [sh, -c]
+        args:
+          - |
+            echo "Building image with tag: {{inputs.parameters.tag}}"
+            sleep 2
+            echo "Image built!"
+
+---
+# ============================================================
+# Using the WorkflowTemplate
+# ============================================================
+
+# Option 1: Simple reference
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: use-template-simple-
+  namespace: argo
+spec:
+  workflowTemplateRef:
+    name: ci-template
+
+---
+# Option 2: Override parameters
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: use-template-custom-
+  namespace: argo
+spec:
+  arguments:
+    parameters:
+      - name: repo
+        value: "https://github.com/myorg/myapp"
+      - name: branch
+        value: "develop"
+      - name: image-tag
+        value: "v1.2.3"
+  workflowTemplateRef:
+    name: ci-template
+
+---
+# ============================================================
+# ClusterWorkflowTemplate (cluster-scoped, available everywhere)
+# ============================================================
+
+apiVersion: argoproj.io/v1alpha1
+kind: ClusterWorkflowTemplate
+metadata:
+  name: common-tasks
+spec:
+  templates:
+    # Reusable notification template
+    - name: slack-notify
+      inputs:
+        parameters:
+          - name: message
+          - name: channel
+            value: "#deployments"
+      container:
+        image: curlimages/curl
+        command: [sh, -c]
+        args:
+          - |
+            echo "Sending to {{inputs.parameters.channel}}: {{inputs.parameters.message}}"
+
+    # Reusable cleanup template
+    - name: cleanup-pvc
+      inputs:
+        parameters:
+          - name: pvc-name
+      container:
+        image: bitnami/kubectl
+        command: [sh, -c]
+        args:
+          - |
+            echo "Cleaning up PVC: {{inputs.parameters.pvc-name}}"
+
+# ============================================================
+# WORKFLOWTEMPLATE BENEFITS:
+#
+#   1. Reusability - Define once, use many times
+#   2. Versioning  - Update template, all workflows update
+#   3. Governance  - Central control over pipelines
+#   4. Consistency - Same pipeline for all projects
+#
+# WORKFLOW vs WORKFLOWTEMPLATE:
+#
+#   Workflow:
+#     - Single execution
+#     - Inline definition
+#     - For one-off jobs
+#
+#   WorkflowTemplate:
+#     - Reusable definition
+#     - Reference by name
+#     - For repeated pipelines
+#
+# CLI COMMANDS:
+#
+#   # List templates
+#   argo template list -n argo
+#
+#   # Get template details
+#   argo template get ci-template -n argo
+#
+#   # Submit from template
+#   argo submit -n argo --from workflowtemplate/ci-template
+#
+#   # Submit with parameters
+#   argo submit -n argo --from workflowtemplate/ci-template \
+#     -p repo="https://github.com/myrepo" \
+#     -p branch="feature/new"
+#
+# ============================================================

@@ -1,0 +1,155 @@
+# ============================================================
+# Script Template - Inline Code Execution
+# ============================================================
+# Runs inline code embedded in the workflow YAML
+# Supports: Python, Bash, Node.js, and any language
+#
+# Run: argo submit -n argo 02-script-template.yaml --watch
+# ============================================================
+
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: script-template-
+spec:
+  entrypoint: main
+  serviceAccountName: argo-workflow
+
+  templates:
+    - name: main
+      steps:
+        - - name: python-script
+            template: python-example
+        - - name: bash-script
+            template: bash-example
+        - - name: node-script
+            template: node-example
+
+    # ============================================================
+    # Python Script Example
+    # ============================================================
+    - name: python-example
+      script:
+        image: python:3.9-alpine
+        command: [python]
+        source: |
+          import json
+          import sys
+          from datetime import datetime
+
+          print("=" * 44)
+          print("  SCRIPT TEMPLATE - Python")
+          print("=" * 44)
+          print(f"Python version: {sys.version_info.major}.{sys.version_info.minor}")
+          print(f"Current time: {datetime.now()}")
+          print("")
+
+          # Data processing example
+          data = [1, 2, 3, 4, 5]
+          result = {
+              "sum": sum(data),
+              "average": sum(data) / len(data),
+              "count": len(data)
+          }
+
+          print(f"Input data: {data}")
+          print(f"Result: {json.dumps(result, indent=2)}")
+          print("=" * 44)
+
+          # Output for next step (written to stdout)
+          # Can be captured using {{steps.step-name.outputs.result}}
+
+    # ============================================================
+    # Bash Script Example
+    # ============================================================
+    - name: bash-example
+      script:
+        image: alpine:latest
+        command: [sh]
+        source: |
+          echo "============================================"
+          echo "  SCRIPT TEMPLATE - Bash"
+          echo "============================================"
+          echo "Date: $(date)"
+          echo "Hostname: $(hostname)"
+          echo ""
+
+          # Variables
+          COUNT=5
+          echo "Counting to $COUNT:"
+          for i in $(seq 1 $COUNT); do
+            echo "  - $i"
+          done
+          echo ""
+
+          # Simple computation
+          RESULT=$((10 * 20))
+          echo "10 x 20 = $RESULT"
+          echo "============================================"
+
+    # ============================================================
+    # Node.js Script Example
+    # ============================================================
+    - name: node-example
+      script:
+        image: node:18-alpine
+        command: [node]
+        source: |
+          console.log("=".repeat(44));
+          console.log("  SCRIPT TEMPLATE - Node.js");
+          console.log("=".repeat(44));
+          console.log(`Node version: ${process.version}`);
+          console.log(`Platform: ${process.platform}`);
+          console.log("");
+
+          // Data processing
+          const items = ["apple", "banana", "cherry"];
+          console.log("Processing items:");
+          items.forEach((item, index) => {
+            console.log(`  ${index + 1}. ${item.toUpperCase()}`);
+          });
+
+          // JSON output
+          const output = {
+            status: "success",
+            processed: items.length,
+            timestamp: new Date().toISOString()
+          };
+          console.log("");
+          console.log("Output:", JSON.stringify(output, null, 2));
+          console.log("=".repeat(44));
+
+# ============================================================
+# SCRIPT TEMPLATE KEY POINTS:
+#
+# Structure:
+#   script:
+#     image: <runtime-image>
+#     command: [<interpreter>]
+#     source: |
+#       <your code here>
+#
+# Common Runtimes:
+#   Python:  image: python:3.9-alpine, command: [python]
+#   Bash:    image: alpine:latest, command: [sh]
+#   Node.js: image: node:18-alpine, command: [node]
+#   Ruby:    image: ruby:3.2-alpine, command: [ruby]
+#   Go:      Use container template (compiled language)
+#
+# Output Capture:
+#   - Script stdout is captured
+#   - Access via: {{steps.step-name.outputs.result}}
+#   - Or: {{tasks.task-name.outputs.result}} in DAG
+#
+# WHEN TO USE:
+#   - Quick one-off scripts without building images
+#   - Data transformation/processing
+#   - Prototyping and testing
+#   - Simple automation tasks
+#
+# LIMITATIONS:
+#   - Code embedded in YAML (can get messy for long scripts)
+#   - No IDE support for embedded code
+#   - For complex code, consider Container template
+#
+# ============================================================

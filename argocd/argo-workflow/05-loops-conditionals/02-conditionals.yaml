@@ -1,0 +1,184 @@
+# ============================================================
+# Conditionals in Argo Workflows
+# ============================================================
+# This workflow demonstrates conditional execution
+# using the "when" clause
+#
+# Run: argo submit -n argo 02-conditionals.yaml -p environment="production" --watch
+# Run: argo submit -n argo 02-conditionals.yaml -p environment="development" --watch
+# ============================================================
+
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: conditionals-
+spec:
+  entrypoint: main
+
+  arguments:
+    parameters:
+      - name: environment
+        value: "development"
+      - name: run-tests
+        value: "true"
+      - name: deploy-enabled
+        value: "true"
+
+  templates:
+    - name: main
+      steps:
+        # Step 1: Build (always runs)
+        - - name: build
+            template: build-app
+
+        # Step 2: Run tests only if run-tests is true
+        - - name: unit-tests
+            template: run-tests
+            when: "{{workflow.parameters.run-tests}} == true"
+            arguments:
+              parameters:
+                - name: test-type
+                  value: "unit"
+
+        # Step 3: Deploy based on environment
+        # Production deployment
+        - - name: deploy-production
+            template: deploy
+            when: "{{workflow.parameters.environment}} == production"
+            arguments:
+              parameters:
+                - name: env
+                  value: "production"
+                - name: replicas
+                  value: "5"
+
+        # Development deployment
+          - name: deploy-development
+            template: deploy
+            when: "{{workflow.parameters.environment}} == development"
+            arguments:
+              parameters:
+                - name: env
+                  value: "development"
+                - name: replicas
+                  value: "1"
+
+        # Step 4: Post-deployment (only for production)
+        - - name: notify-slack
+            template: send-notification
+            when: "{{workflow.parameters.environment}} == production"
+
+          - name: run-smoke-tests
+            template: smoke-tests
+            when: "{{workflow.parameters.environment}} == production"
+
+    # Build template
+    - name: build-app
+      container:
+        image: alpine:latest
+        command: [sh, -c]
+        args:
+          - |
+            echo "=== Building Application ==="
+            echo "Environment: {{workflow.parameters.environment}}"
+            sleep 2
+            echo "Build complete!"
+
+    # Test template
+    - name: run-tests
+      inputs:
+        parameters:
+          - name: test-type
+      container:
+        image: alpine:latest
+        command: [sh, -c]
+        args:
+          - |
+            echo "=== Running {{inputs.parameters.test-type}} Tests ==="
+            sleep 2
+            echo "All tests passed!"
+
+    # Deploy template
+    - name: deploy
+      inputs:
+        parameters:
+          - name: env
+          - name: replicas
+      container:
+        image: alpine:latest
+        command: [sh, -c]
+        args:
+          - |
+            echo "============================================"
+            echo "  Deploying to {{inputs.parameters.env}}"
+            echo "============================================"
+            echo "Replicas: {{inputs.parameters.replicas}}"
+            sleep 2
+            echo "Deployment successful!"
+
+    # Notification template
+    - name: send-notification
+      container:
+        image: alpine:latest
+        command: [echo]
+        args: ["Sending Slack notification: Production deployment complete!"]
+
+    # Smoke tests template
+    - name: smoke-tests
+      container:
+        image: alpine:latest
+        command: [sh, -c]
+        args:
+          - |
+            echo "Running smoke tests on production..."
+            sleep 2
+            echo "Smoke tests passed!"
+
+# ============================================================
+# CONDITIONAL EXECUTION FLOW:
+#
+# environment = "production":
+#
+#   ┌─────────┐
+#   │  Build  │
+#   └────┬────┘
+#        │
+#        ▼
+#   ┌─────────────┐
+#   │ Unit Tests  │  (if run-tests == true)
+#   └──────┬──────┘
+#          │
+#          ▼
+#   ┌───────────────────┐
+#   │ Deploy Production │  ← (when == production)
+#   │   (5 replicas)    │
+#   └─────────┬─────────┘
+#             │
+#     ┌───────┴───────┐
+#     │               │
+#     ▼               ▼
+# ┌─────────┐   ┌───────────┐
+# │  Slack  │   │   Smoke   │
+# │ Notify  │   │   Tests   │
+# └─────────┘   └───────────┘
+#
+# environment = "development":
+#
+#   ┌─────────┐
+#   │  Build  │
+#   └────┬────┘
+#        │
+#        ▼
+#   ┌─────────────┐
+#   │ Unit Tests  │
+#   └──────┬──────┘
+#          │
+#          ▼
+#   ┌─────────────────────┐
+#   │ Deploy Development  │  ← (when == development)
+#   │    (1 replica)      │
+#   └─────────────────────┘
+#
+#   (No Slack notify, No smoke tests)
+#
+# ============================================================

@@ -1,0 +1,116 @@
+# ============================================================
+# Script Templates
+# ============================================================
+# Script templates allow you to write inline code
+# Supports Python, Bash, Node.js, and more
+#
+# Run: argo submit -n argo 04-script-template.yaml --watch
+# ============================================================
+
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: script-templates-
+spec:
+  entrypoint: main
+
+  templates:
+    - name: main
+      steps:
+        # Step 1: Bash script
+        - - name: bash-script
+            template: bash-example
+
+        # Step 2: Python script
+        - - name: python-script
+            template: python-example
+
+        # Step 3: Python with parameters
+        - - name: python-with-params
+            template: python-calculator
+            arguments:
+              parameters:
+                - name: num1
+                  value: "10"
+                - name: num2
+                  value: "5"
+
+    # Bash script template
+    - name: bash-example
+      script:
+        image: alpine:latest
+        command: [sh]
+        source: |
+          echo "=== Bash Script Example ==="
+          echo "Current date: $(date)"
+          echo "Hostname: $(hostname)"
+          echo "Running as user: $(whoami)"
+
+          # Loop example
+          for i in 1 2 3; do
+            echo "Iteration $i"
+          done
+
+          echo "=== Done ==="
+
+    # Python script template
+    - name: python-example
+      script:
+        image: python:3.9-alpine
+        command: [python]
+        source: |
+          import json
+          import sys
+          from datetime import datetime
+
+          print("=== Python Script Example ===")
+          print(f"Python version: {sys.version}")
+          print(f"Current time: {datetime.now()}")
+
+          # Create some data
+          data = {
+              "name": "Argo Workflow",
+              "type": "Python Script",
+              "items": [1, 2, 3, 4, 5]
+          }
+
+          print(f"Data: {json.dumps(data, indent=2)}")
+          print("=== Done ===")
+
+    # Python with input parameters
+    - name: python-calculator
+      inputs:
+        parameters:
+          - name: num1
+          - name: num2
+      script:
+        image: python:3.9-alpine
+        command: [python]
+        source: |
+          num1 = {{inputs.parameters.num1}}
+          num2 = {{inputs.parameters.num2}}
+
+          print(f"=== Calculator ===")
+          print(f"Number 1: {num1}")
+          print(f"Number 2: {num2}")
+          print(f"Sum: {num1 + num2}")
+          print(f"Difference: {num1 - num2}")
+          print(f"Product: {num1 * num2}")
+          print(f"Division: {num1 / num2}")
+          print(f"=== Done ===")
+
+# ============================================================
+# SCRIPT vs CONTAINER:
+#
+# Container Template:
+#   - Runs a pre-existing script/binary in the image
+#   - Good for complex applications
+#   - Requires the script to exist in the image
+#
+# Script Template:
+#   - Inline code directly in the workflow
+#   - Good for quick scripts and prototyping
+#   - Code is passed to the interpreter
+#
+# Choose based on your use case!
+# ============================================================

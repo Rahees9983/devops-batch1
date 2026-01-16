@@ -1,0 +1,378 @@
+# ============================================================
+# WorkflowTemplate - Reusable Workflow Definitions
+# ============================================================
+# WorkflowTemplates are like functions - define once, use many times
+# They are NAMESPACED resources (available only in their namespace)
+#
+# Apply:  kubectl apply -n argo -f 09-workflow-template.yaml
+# List:   argo template list -n argo
+# Submit: argo submit -n argo --from workflowtemplate/build-and-deploy
+# ============================================================
+
+# ============================================================
+# WORKFLOWTEMPLATE DEFINITION
+# ============================================================
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: build-and-deploy
+  namespace: argo
+  labels:
+    app: ci-cd
+    team: platform
+spec:
+  # Default arguments (can be overridden when submitting)
+  arguments:
+    parameters:
+      - name: repo-url
+        value: "https://github.com/example/app"
+      - name: branch
+        value: "main"
+      - name: image-name
+        value: "myapp"
+      - name: image-tag
+        value: "latest"
+      - name: environment
+        value: "staging"
+
+  # Entry point template
+  entrypoint: ci-cd-pipeline
+
+  # Service account for RBAC
+  serviceAccountName: argo-workflow
+
+  # Templates defined within this WorkflowTemplate
+  templates:
+    # ============================================================
+    # Main Pipeline (DAG)
+    # ============================================================
+    - name: ci-cd-pipeline
+      dag:
+        tasks:
+          - name: checkout
+            template: git-checkout
+            arguments:
+              parameters:
+                - name: repo
+                  value: "{{workflow.parameters.repo-url}}"
+                - name: branch
+                  value: "{{workflow.parameters.branch}}"
+
+          - name: lint
+            dependencies: [checkout]
+            template: run-lint
+
+          - name: test
+            dependencies: [checkout]
+            template: run-tests
+
+          - name: build
+            dependencies: [lint, test]
+            template: build-image
+            arguments:
+              parameters:
+                - name: image
+                  value: "{{workflow.parameters.image-name}}"
+                - name: tag
+                  value: "{{workflow.parameters.image-tag}}"
+
+          - name: deploy
+            dependencies: [build]
+            template: deploy-app
+            arguments:
+              parameters:
+                - name: environment
+                  value: "{{workflow.parameters.environment}}"
+
+    # ============================================================
+    # Git Checkout Template
+    # ============================================================
+    - name: git-checkout
+      inputs:
+        parameters:
+          - name: repo
+          - name: branch
+      container:
+        image: alpine/git:latest
+        command: [sh, -c]
+        args:
+          - |
+            echo "============================================"
+            echo "  GIT CHECKOUT"
+            echo "============================================"
+            echo "Repository: {{inputs.parameters.repo}}"
+            echo "Branch: {{inputs.parameters.branch}}"
+            echo ""
+            echo "Cloning repository..."
+            sleep 2
+            echo "Checkout complete!"
+            echo "============================================"
+
+    # ============================================================
+    # Lint Template
+    # ============================================================
+    - name: run-lint
+      container:
+        image: node:18-alpine
+        command: [sh, -c]
+        args:
+          - |
+            echo "============================================"
+            echo "  LINTING CODE"
+            echo "============================================"
+            echo "Running ESLint..."
+            sleep 2
+            echo "No linting errors found!"
+            echo "============================================"
+
+    # ============================================================
+    # Test Template
+    # ============================================================
+    - name: run-tests
+      container:
+        image: node:18-alpine
+        command: [sh, -c]
+        args:
+          - |
+            echo "============================================"
+            echo "  RUNNING TESTS"
+            echo "============================================"
+            echo "Running unit tests..."
+            sleep 3
+            echo "All 42 tests passed!"
+            echo "============================================"
+
+    # ============================================================
+    # Build Image Template
+    # ============================================================
+    - name: build-image
+      inputs:
+        parameters:
+          - name: image
+          - name: tag
+      container:
+        image: alpine:latest
+        command: [sh, -c]
+        args:
+          - |
+            echo "============================================"
+            echo "  BUILDING IMAGE"
+            echo "============================================"
+            echo "Image: {{inputs.parameters.image}}:{{inputs.parameters.tag}}"
+            echo ""
+            echo "Building Docker image..."
+            sleep 3
+            echo "Pushing to registry..."
+            sleep 2
+            echo "Image pushed successfully!"
+            echo "============================================"
+
+    # ============================================================
+    # Deploy Template
+    # ============================================================
+    - name: deploy-app
+      inputs:
+        parameters:
+          - name: environment
+      container:
+        image: bitnami/kubectl:latest
+        command: [sh, -c]
+        args:
+          - |
+            echo "============================================"
+            echo "  DEPLOYING APPLICATION"
+            echo "============================================"
+            echo "Environment: {{inputs.parameters.environment}}"
+            echo ""
+            echo "Applying Kubernetes manifests..."
+            sleep 2
+            echo "Waiting for rollout..."
+            sleep 2
+            echo "Deployment successful!"
+            echo "============================================"
+
+---
+# ============================================================
+# USING THE WORKFLOWTEMPLATE
+# ============================================================
+
+# Option 1: Simple reference (uses all defaults)
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: use-template-defaults-
+  namespace: argo
+spec:
+  workflowTemplateRef:
+    name: build-and-deploy
+
+---
+# Option 2: Override specific parameters
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: use-template-custom-
+  namespace: argo
+spec:
+  arguments:
+    parameters:
+      - name: repo-url
+        value: "https://github.com/myorg/myapp"
+      - name: branch
+        value: "feature/new-feature"
+      - name: image-tag
+        value: "v2.0.0"
+      - name: environment
+        value: "production"
+  workflowTemplateRef:
+    name: build-and-deploy
+
+---
+# ============================================================
+# WORKFLOWTEMPLATE WITH TEMPLATE REFERENCES
+# ============================================================
+# You can reference templates from OTHER WorkflowTemplates
+# ============================================================
+
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: notification-templates
+  namespace: argo
+spec:
+  templates:
+    # Slack notification template
+    - name: slack-notify
+      inputs:
+        parameters:
+          - name: channel
+            value: "#deployments"
+          - name: message
+          - name: status
+            value: "info"
+      container:
+        image: curlimages/curl:latest
+        command: [sh, -c]
+        args:
+          - |
+            echo "============================================"
+            echo "  SLACK NOTIFICATION"
+            echo "============================================"
+            echo "Channel: {{inputs.parameters.channel}}"
+            echo "Status: {{inputs.parameters.status}}"
+            echo "Message: {{inputs.parameters.message}}"
+            echo ""
+            echo "Sending notification..."
+            # In production: curl -X POST webhook-url -d '{"text": "..."}'
+            echo "Notification sent!"
+            echo "============================================"
+
+    # Email notification template
+    - name: email-notify
+      inputs:
+        parameters:
+          - name: to
+          - name: subject
+          - name: body
+      container:
+        image: alpine:latest
+        command: [sh, -c]
+        args:
+          - |
+            echo "============================================"
+            echo "  EMAIL NOTIFICATION"
+            echo "============================================"
+            echo "To: {{inputs.parameters.to}}"
+            echo "Subject: {{inputs.parameters.subject}}"
+            echo "Body: {{inputs.parameters.body}}"
+            echo ""
+            echo "Sending email..."
+            echo "Email sent!"
+            echo "============================================"
+
+---
+# Using templates from another WorkflowTemplate
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: use-external-template-
+  namespace: argo
+spec:
+  entrypoint: main
+  serviceAccountName: argo-workflow
+
+  templates:
+    - name: main
+      steps:
+        - - name: do-work
+            template: work
+
+        - - name: notify
+            templateRef:
+              name: notification-templates  # Reference external WorkflowTemplate
+              template: slack-notify        # Specific template within it
+            arguments:
+              parameters:
+                - name: message
+                  value: "Work completed successfully!"
+                - name: status
+                  value: "success"
+
+    - name: work
+      container:
+        image: alpine:latest
+        command: [sh, -c]
+        args:
+          - |
+            echo "Doing important work..."
+            sleep 3
+            echo "Done!"
+
+# ============================================================
+# WORKFLOWTEMPLATE KEY POINTS:
+#
+# WHAT IS IT:
+#   - Reusable workflow definition
+#   - Namespaced resource (only available in its namespace)
+#   - Like a "function" you can call multiple times
+#
+# HOW TO CREATE:
+#   kubectl apply -n argo -f workflow-template.yaml
+#
+# HOW TO USE:
+#   # Method 1: Direct reference
+#   spec:
+#     workflowTemplateRef:
+#       name: my-template
+#
+#   # Method 2: Reference specific template
+#   templateRef:
+#     name: template-library
+#     template: specific-template
+#
+# CLI COMMANDS:
+#   # List templates
+#   argo template list -n argo
+#
+#   # Get template details
+#   argo template get build-and-deploy -n argo
+#
+#   # Submit from template (uses defaults)
+#   argo submit -n argo --from workflowtemplate/build-and-deploy
+#
+#   # Submit with parameter overrides
+#   argo submit -n argo --from workflowtemplate/build-and-deploy \
+#     -p branch=develop \
+#     -p environment=production
+#
+#   # Delete template
+#   argo template delete build-and-deploy -n argo
+#
+# BENEFITS:
+#   1. Reusability - Define once, use many times
+#   2. Consistency - Same pipeline for all projects
+#   3. Governance - Central control over workflows
+#   4. Versioning - Update template, all users get updates
+#   5. Separation - Template authors vs template users
+#
+# ============================================================

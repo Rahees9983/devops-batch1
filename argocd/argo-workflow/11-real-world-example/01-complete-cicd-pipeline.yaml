@@ -1,0 +1,910 @@
+# ============================================================
+# Complete CI/CD Pipeline - Real World Example
+# ============================================================
+# This workflow demonstrates most Argo Workflow features in a
+# realistic CI/CD pipeline for a Node.js microservice.
+#
+# FEATURES DEMONSTRATED:
+#   - DAG and Steps orchestration
+#   - Parameters (input, output, global)
+#   - Artifacts (generate, consume, pass between steps)
+#   - Container, Script, HTTP, Suspend templates
+#   - Conditionals (when)
+#   - Loops (withItems)
+#   - Retry with backoff
+#   - Timeouts
+#   - Exit handlers
+#   - Daemon containers (for testing)
+#   - Resource limits
+#   - Secrets and ConfigMaps
+#
+# Run: argo submit -n argo 01-complete-cicd-pipeline.yaml --watch
+# With params: argo submit -n argo 01-complete-cicd-pipeline.yaml \
+#   -p git-repo="https://github.com/myorg/myapp" \
+#   -p git-branch="feature/new" \
+#   -p environment="staging" \
+#   --watch
+# ============================================================
+
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: cicd-pipeline-
+  labels:
+    app: cicd
+    team: platform
+spec:
+  # ============================================================
+  # WORKFLOW CONFIGURATION
+  # ============================================================
+  entrypoint: main-pipeline
+  serviceAccountName: argo-workflow
+
+  # Workflow-level timeout (30 minutes max)
+  activeDeadlineSeconds: 1800
+
+  # Exit handler - runs after main workflow (success or failure)
+  onExit: exit-handler
+
+  # Artifact garbage collection
+  artifactGC:
+    strategy: OnWorkflowDeletion
+
+  # ============================================================
+  # GLOBAL PARAMETERS
+  # ============================================================
+  arguments:
+    parameters:
+      - name: git-repo
+        value: "https://github.com/example/nodejs-app"
+      - name: git-branch
+        value: "main"
+      - name: image-registry
+        value: "docker.io/myorg"
+      - name: image-name
+        value: "nodejs-app"
+      - name: environment
+        value: "staging"  # staging or production
+      - name: notify-slack
+        value: "true"
+      - name: slack-channel
+        value: "#deployments"
+
+  # ============================================================
+  # VOLUMES (shared across templates)
+  # ============================================================
+  volumeClaimTemplates:
+    - metadata:
+        name: workspace
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 1Gi
+
+  templates:
+    # ============================================================
+    # MAIN PIPELINE (DAG Orchestration)
+    # ============================================================
+    - name: main-pipeline
+      dag:
+        tasks:
+          # ------------------------------------------------------
+          # STAGE 1: Setup & Clone
+          # ------------------------------------------------------
+          - name: notify-start
+            template: slack-notification
+            arguments:
+              parameters:
+                - name: message
+                  value: "🚀 Pipeline started for {{workflow.parameters.git-repo}} ({{workflow.parameters.git-branch}})"
+                - name: color
+                  value: "#439FE0"
+            when: "{{workflow.parameters.notify-slack}} == 'true'"
+
+          - name: clone-repo
+            template: git-clone
+            arguments:
+              parameters:
+                - name: repo
+                  value: "{{workflow.parameters.git-repo}}"
+                - name: branch
+                  value: "{{workflow.parameters.git-branch}}"
+
+          # ------------------------------------------------------
+          # STAGE 2: Quality Checks (Parallel)
+          # ------------------------------------------------------
+          - name: install-deps
+            dependencies: [clone-repo]
+            template: npm-install
+
+          - name: lint
+            dependencies: [install-deps]
+            template: run-lint
+
+          - name: security-scan
+            dependencies: [install-deps]
+            template: security-scan
+
+          - name: unit-tests
+            dependencies: [install-deps]
+            template: run-unit-tests
+
+          # ------------------------------------------------------
+          # STAGE 3: Integration Tests (with DB daemon)
+          # ------------------------------------------------------
+          - name: integration-tests
+            dependencies: [unit-tests, lint]
+            template: integration-test-suite
+
+          # ------------------------------------------------------
+          # STAGE 4: Build
+          # ------------------------------------------------------
+          - name: build-app
+            dependencies: [integration-tests, security-scan]
+            template: build-application
+
+          - name: build-docker
+            dependencies: [build-app]
+            template: build-docker-image
+            arguments:
+              parameters:
+                - name: image-tag
+                  value: "{{workflow.parameters.git-branch}}-{{workflow.name}}"
+
+          # ------------------------------------------------------
+          # STAGE 5: Deploy to Staging
+          # ------------------------------------------------------
+          - name: deploy-staging
+            dependencies: [build-docker]
+            template: deploy-to-environment
+            arguments:
+              parameters:
+                - name: env
+                  value: "staging"
+                - name: image-tag
+                  value: "{{workflow.parameters.git-branch}}-{{workflow.name}}"
+
+          - name: smoke-tests
+            dependencies: [deploy-staging]
+            template: run-smoke-tests
+            arguments:
+              parameters:
+                - name: env
+                  value: "staging"
+
+          # ------------------------------------------------------
+          # STAGE 6: Production Approval & Deploy (Conditional)
+          # ------------------------------------------------------
+          - name: approval-gate
+            dependencies: [smoke-tests]
+            template: manual-approval
+            when: "{{workflow.parameters.environment}} == 'production'"
+
+          - name: deploy-production
+            dependencies: [approval-gate]
+            template: deploy-to-environment
+            arguments:
+              parameters:
+                - name: env
+                  value: "production"
+                - name: image-tag
+                  value: "{{workflow.parameters.git-branch}}-{{workflow.name}}"
+            when: "{{workflow.parameters.environment}} == 'production'"
+
+          - name: production-verification
+            dependencies: [deploy-production]
+            template: verify-deployment
+            arguments:
+              parameters:
+                - name: env
+                  value: "production"
+            when: "{{workflow.parameters.environment}} == 'production'"
+
+    # ============================================================
+    # GIT CLONE TEMPLATE
+    # ============================================================
+    - name: git-clone
+      inputs:
+        parameters:
+          - name: repo
+          - name: branch
+      container:
+        image: alpine/git:latest
+        command: [sh, -c]
+        args:
+          - |
+            echo "============================================"
+            echo "  GIT CLONE"
+            echo "============================================"
+            echo "Repository: {{inputs.parameters.repo}}"
+            echo "Branch: {{inputs.parameters.branch}}"
+            echo ""
+
+            # Simulating git clone
+            mkdir -p /workspace/app
+            cd /workspace/app
+
+            # Create mock project structure
+            echo '{"name": "nodejs-app", "version": "1.0.0"}' > package.json
+            echo '{"dependencies": {"express": "^4.18.0"}}' >> package.json
+            mkdir -p src tests
+            echo 'console.log("Hello World");' > src/index.js
+            echo 'test("sample", () => expect(true).toBe(true));' > tests/app.test.js
+
+            echo "Repository cloned successfully!"
+            echo "Files:"
+            find /workspace/app -type f
+            echo "============================================"
+        volumeMounts:
+          - name: workspace
+            mountPath: /workspace
+
+    # ============================================================
+    # NPM INSTALL TEMPLATE (with retry)
+    # ============================================================
+    - name: npm-install
+      retryStrategy:
+        limit: 3
+        backoff:
+          duration: "10s"
+          factor: 2
+      activeDeadlineSeconds: 300
+      container:
+        image: node:18-alpine
+        command: [sh, -c]
+        args:
+          - |
+            echo "============================================"
+            echo "  NPM INSTALL"
+            echo "============================================"
+            cd /workspace/app
+
+            # Simulating npm install
+            echo "Installing dependencies..."
+            sleep 3
+            mkdir -p node_modules
+            echo "Dependencies installed!"
+
+            echo "============================================"
+        volumeMounts:
+          - name: workspace
+            mountPath: /workspace
+
+    # ============================================================
+    # LINT TEMPLATE (Script type)
+    # ============================================================
+    - name: run-lint
+      activeDeadlineSeconds: 120
+      script:
+        image: node:18-alpine
+        command: [sh]
+        source: |
+          echo "============================================"
+          echo "  LINTING CODE"
+          echo "============================================"
+          cd /workspace/app
+
+          echo "Running ESLint..."
+          sleep 2
+
+          # Simulated lint results
+          echo "✓ src/index.js - No issues"
+          echo "✓ tests/app.test.js - No issues"
+          echo ""
+          echo "Lint Summary:"
+          echo "  Files checked: 2"
+          echo "  Errors: 0"
+          echo "  Warnings: 0"
+          echo "============================================"
+        volumeMounts:
+          - name: workspace
+            mountPath: /workspace
+
+    # ============================================================
+    # SECURITY SCAN TEMPLATE
+    # ============================================================
+    - name: security-scan
+      activeDeadlineSeconds: 300
+      container:
+        image: alpine:latest
+        command: [sh, -c]
+        args:
+          - |
+            echo "============================================"
+            echo "  SECURITY SCAN"
+            echo "============================================"
+
+            echo "Running dependency vulnerability scan..."
+            sleep 3
+
+            echo "Scanning for secrets in code..."
+            sleep 2
+
+            echo "Running SAST analysis..."
+            sleep 2
+
+            # Generate security report artifact
+            cat > /tmp/security-report.json << 'EOF'
+            {
+              "scan_date": "2024-01-15T10:00:00Z",
+              "vulnerabilities": {
+                "critical": 0,
+                "high": 0,
+                "medium": 1,
+                "low": 3
+              },
+              "secrets_found": 0,
+              "sast_issues": 0,
+              "status": "PASS"
+            }
+            EOF
+
+            echo ""
+            echo "Security Scan Results:"
+            cat /tmp/security-report.json
+            echo ""
+            echo "Status: PASS ✓"
+            echo "============================================"
+        volumeMounts:
+          - name: workspace
+            mountPath: /workspace
+      outputs:
+        artifacts:
+          - name: security-report
+            path: /tmp/security-report.json
+
+    # ============================================================
+    # UNIT TESTS TEMPLATE (with test report artifact)
+    # ============================================================
+    - name: run-unit-tests
+      activeDeadlineSeconds: 300
+      container:
+        image: node:18-alpine
+        command: [sh, -c]
+        args:
+          - |
+            echo "============================================"
+            echo "  UNIT TESTS"
+            echo "============================================"
+            cd /workspace/app
+
+            echo "Running Jest tests..."
+            sleep 3
+
+            # Generate test report
+            mkdir -p /tmp/reports
+            cat > /tmp/reports/test-results.json << 'EOF'
+            {
+              "numTotalTests": 42,
+              "numPassedTests": 42,
+              "numFailedTests": 0,
+              "numPendingTests": 0,
+              "testResults": [
+                {"name": "User API tests", "status": "passed", "duration": 1.2},
+                {"name": "Auth tests", "status": "passed", "duration": 0.8},
+                {"name": "Database tests", "status": "passed", "duration": 2.1}
+              ],
+              "coverage": {
+                "lines": 85.5,
+                "functions": 90.2,
+                "branches": 78.3
+              }
+            }
+            EOF
+
+            echo ""
+            echo "Test Results:"
+            echo "  Total: 42"
+            echo "  Passed: 42 ✓"
+            echo "  Failed: 0"
+            echo ""
+            echo "Coverage: 85.5% lines"
+            echo "============================================"
+        volumeMounts:
+          - name: workspace
+            mountPath: /workspace
+      outputs:
+        artifacts:
+          - name: test-report
+            path: /tmp/reports
+        parameters:
+          - name: test-passed
+            valueFrom:
+              path: /tmp/reports/test-results.json
+
+    # ============================================================
+    # INTEGRATION TESTS (with PostgreSQL daemon)
+    # ============================================================
+    - name: integration-test-suite
+      dag:
+        tasks:
+          - name: postgres-db
+            template: postgres-daemon
+
+          - name: run-integration-tests
+            dependencies: [postgres-db]
+            template: integration-tests
+            arguments:
+              parameters:
+                - name: db-host
+                  value: "{{tasks.postgres-db.ip}}"
+
+    - name: postgres-daemon
+      daemon: true
+      container:
+        image: postgres:15-alpine
+        env:
+          - name: POSTGRES_USER
+            value: "testuser"
+          - name: POSTGRES_PASSWORD
+            value: "testpass"
+          - name: POSTGRES_DB
+            value: "testdb"
+        ports:
+          - containerPort: 5432
+        readinessProbe:
+          exec:
+            command: [pg_isready, -U, testuser]
+          initialDelaySeconds: 5
+          periodSeconds: 2
+
+    - name: integration-tests
+      inputs:
+        parameters:
+          - name: db-host
+      retryStrategy:
+        limit: 2
+        backoff:
+          duration: "5s"
+      activeDeadlineSeconds: 300
+      container:
+        image: node:18-alpine
+        command: [sh, -c]
+        args:
+          - |
+            echo "============================================"
+            echo "  INTEGRATION TESTS"
+            echo "============================================"
+            echo "Database Host: {{inputs.parameters.db-host}}"
+            echo ""
+
+            # Wait for database
+            echo "Waiting for database..."
+            sleep 5
+
+            echo "Running integration tests..."
+            sleep 5
+
+            echo ""
+            echo "Integration Test Results:"
+            echo "  API Integration: PASS ✓"
+            echo "  Database Integration: PASS ✓"
+            echo "  External Service Mocks: PASS ✓"
+            echo ""
+            echo "All integration tests passed!"
+            echo "============================================"
+        volumeMounts:
+          - name: workspace
+            mountPath: /workspace
+
+    # ============================================================
+    # BUILD APPLICATION TEMPLATE
+    # ============================================================
+    - name: build-application
+      activeDeadlineSeconds: 300
+      container:
+        image: node:18-alpine
+        command: [sh, -c]
+        args:
+          - |
+            echo "============================================"
+            echo "  BUILD APPLICATION"
+            echo "============================================"
+            cd /workspace/app
+
+            echo "Compiling TypeScript..."
+            sleep 2
+
+            echo "Bundling application..."
+            sleep 2
+
+            # Create build output
+            mkdir -p /workspace/app/dist
+            echo 'console.log("Built app");' > /workspace/app/dist/index.js
+
+            echo "Generating build manifest..."
+            cat > /tmp/build-manifest.json << EOF
+            {
+              "version": "1.0.0",
+              "buildTime": "$(date -Iseconds)",
+              "gitCommit": "abc123def",
+              "gitBranch": "{{workflow.parameters.git-branch}}"
+            }
+            EOF
+
+            echo ""
+            echo "Build complete!"
+            echo "Output: /workspace/app/dist"
+            ls -la /workspace/app/dist
+            echo "============================================"
+        volumeMounts:
+          - name: workspace
+            mountPath: /workspace
+      outputs:
+        artifacts:
+          - name: build-manifest
+            path: /tmp/build-manifest.json
+
+    # ============================================================
+    # BUILD DOCKER IMAGE TEMPLATE
+    # ============================================================
+    - name: build-docker-image
+      inputs:
+        parameters:
+          - name: image-tag
+      activeDeadlineSeconds: 600
+      container:
+        image: alpine:latest
+        command: [sh, -c]
+        args:
+          - |
+            echo "============================================"
+            echo "  BUILD DOCKER IMAGE"
+            echo "============================================"
+            echo "Registry: {{workflow.parameters.image-registry}}"
+            echo "Image: {{workflow.parameters.image-name}}"
+            echo "Tag: {{inputs.parameters.image-tag}}"
+            echo ""
+
+            FULL_IMAGE="{{workflow.parameters.image-registry}}/{{workflow.parameters.image-name}}:{{inputs.parameters.image-tag}}"
+
+            echo "Building image: $FULL_IMAGE"
+            sleep 3
+
+            echo "Pushing to registry..."
+            sleep 2
+
+            # In real scenario, use kaniko or buildah:
+            # /kaniko/executor --dockerfile=/workspace/app/Dockerfile \
+            #   --context=/workspace/app \
+            #   --destination=$FULL_IMAGE
+
+            echo ""
+            echo "Image built and pushed successfully!"
+            echo "Full image: $FULL_IMAGE"
+            echo "============================================"
+        volumeMounts:
+          - name: workspace
+            mountPath: /workspace
+      outputs:
+        parameters:
+          - name: image-url
+            value: "{{workflow.parameters.image-registry}}/{{workflow.parameters.image-name}}:{{inputs.parameters.image-tag}}"
+
+    # ============================================================
+    # DEPLOY TO ENVIRONMENT TEMPLATE
+    # ============================================================
+    - name: deploy-to-environment
+      inputs:
+        parameters:
+          - name: env
+          - name: image-tag
+      activeDeadlineSeconds: 300
+      container:
+        image: bitnami/kubectl:latest
+        command: [sh, -c]
+        args:
+          - |
+            echo "============================================"
+            echo "  DEPLOY TO {{inputs.parameters.env | upper}}"
+            echo "============================================"
+            echo "Environment: {{inputs.parameters.env}}"
+            echo "Image Tag: {{inputs.parameters.image-tag}}"
+            echo ""
+
+            # In real scenario:
+            # kubectl set image deployment/app \
+            #   app={{workflow.parameters.image-registry}}/{{workflow.parameters.image-name}}:{{inputs.parameters.image-tag}} \
+            #   -n {{inputs.parameters.env}}
+            # kubectl rollout status deployment/app -n {{inputs.parameters.env}}
+
+            echo "Updating deployment..."
+            sleep 3
+
+            echo "Waiting for rollout..."
+            sleep 3
+
+            echo ""
+            echo "Deployment to {{inputs.parameters.env}} successful!"
+            echo "============================================"
+
+    # ============================================================
+    # SMOKE TESTS TEMPLATE
+    # ============================================================
+    - name: run-smoke-tests
+      inputs:
+        parameters:
+          - name: env
+      retryStrategy:
+        limit: 3
+        backoff:
+          duration: "10s"
+          factor: 2
+      activeDeadlineSeconds: 180
+      container:
+        image: curlimages/curl:latest
+        command: [sh, -c]
+        args:
+          - |
+            echo "============================================"
+            echo "  SMOKE TESTS - {{inputs.parameters.env}}"
+            echo "============================================"
+
+            # In real scenario:
+            # curl -sf https://{{inputs.parameters.env}}.myapp.com/health
+
+            echo "Testing health endpoint..."
+            sleep 2
+            echo "✓ Health check passed"
+
+            echo "Testing API endpoint..."
+            sleep 2
+            echo "✓ API responding"
+
+            echo "Testing database connectivity..."
+            sleep 2
+            echo "✓ Database connected"
+
+            echo ""
+            echo "All smoke tests passed!"
+            echo "============================================"
+
+    # ============================================================
+    # MANUAL APPROVAL TEMPLATE (Suspend)
+    # ============================================================
+    - name: manual-approval
+      suspend: {}
+      # Resume with: argo resume <workflow-name> -n argo
+
+    # ============================================================
+    # VERIFY DEPLOYMENT TEMPLATE
+    # ============================================================
+    - name: verify-deployment
+      inputs:
+        parameters:
+          - name: env
+      steps:
+        - - name: health-check
+            template: http-health-check
+            arguments:
+              parameters:
+                - name: url
+                  value: "https://httpbin.org/status/200"
+
+        - - name: verify-metrics
+            template: verify-metrics
+
+    - name: http-health-check
+      inputs:
+        parameters:
+          - name: url
+      http:
+        url: "{{inputs.parameters.url}}"
+        method: GET
+        successCondition: "response.statusCode == 200"
+        timeoutSeconds: 30
+
+    - name: verify-metrics
+      container:
+        image: alpine:latest
+        command: [sh, -c]
+        args:
+          - |
+            echo "Verifying deployment metrics..."
+            sleep 2
+            echo "✓ CPU usage normal"
+            echo "✓ Memory usage normal"
+            echo "✓ Error rate < 0.1%"
+            echo "Deployment verified!"
+
+    # ============================================================
+    # SLACK NOTIFICATION TEMPLATE (HTTP)
+    # ============================================================
+    - name: slack-notification
+      inputs:
+        parameters:
+          - name: message
+          - name: color
+            default: "#36a64f"
+      container:
+        image: curlimages/curl:latest
+        command: [sh, -c]
+        args:
+          - |
+            echo "============================================"
+            echo "  SLACK NOTIFICATION"
+            echo "============================================"
+            echo "Message: {{inputs.parameters.message}}"
+            echo "Color: {{inputs.parameters.color}}"
+            echo ""
+
+            # In real scenario:
+            # curl -X POST $SLACK_WEBHOOK_URL \
+            #   -H 'Content-Type: application/json' \
+            #   -d '{
+            #     "attachments": [{
+            #       "color": "{{inputs.parameters.color}}",
+            #       "text": "{{inputs.parameters.message}}"
+            #     }]
+            #   }'
+
+            echo "Notification sent!"
+            echo "============================================"
+
+    # ============================================================
+    # EXIT HANDLER (runs after main workflow)
+    # ============================================================
+    - name: exit-handler
+      steps:
+        # Always notify completion status
+        - - name: notify-completion
+            template: notify-workflow-status
+
+        # Cleanup on success
+        - - name: cleanup-on-success
+            template: cleanup-resources
+            when: "{{workflow.status}} == Succeeded"
+
+        # Alert on failure
+          - name: alert-on-failure
+            template: alert-failure
+            when: "{{workflow.status}} == Failed"
+
+        # Archive logs always
+        - - name: archive-logs
+            template: archive-workflow-logs
+
+    - name: notify-workflow-status
+      container:
+        image: alpine:latest
+        command: [sh, -c]
+        args:
+          - |
+            echo "============================================"
+            echo "  WORKFLOW COMPLETION NOTIFICATION"
+            echo "============================================"
+            echo "Workflow: {{workflow.name}}"
+            echo "Status: {{workflow.status}}"
+            echo "Duration: {{workflow.duration}}"
+            echo ""
+
+            if [ "{{workflow.status}}" = "Succeeded" ]; then
+              echo "✅ Pipeline completed successfully!"
+            else
+              echo "❌ Pipeline failed!"
+              echo "Failures: {{workflow.failures}}"
+            fi
+            echo "============================================"
+
+    - name: cleanup-resources
+      container:
+        image: alpine:latest
+        command: [sh, -c]
+        args:
+          - |
+            echo "Cleaning up temporary resources..."
+            echo "- Removing temp files"
+            echo "- Clearing caches"
+            echo "Cleanup complete!"
+
+    - name: alert-failure
+      container:
+        image: alpine:latest
+        command: [sh, -c]
+        args:
+          - |
+            echo "============================================"
+            echo "  🚨 PIPELINE FAILURE ALERT"
+            echo "============================================"
+            echo "Workflow: {{workflow.name}}"
+            echo "Status: {{workflow.status}}"
+            echo ""
+            echo "Actions:"
+            echo "- Creating incident ticket"
+            echo "- Notifying on-call engineer"
+            echo "- Preserving debug logs"
+            echo "============================================"
+
+    - name: archive-workflow-logs
+      container:
+        image: alpine:latest
+        command: [sh, -c]
+        args:
+          - |
+            echo "Archiving workflow logs..."
+            echo "Workflow: {{workflow.name}}"
+            echo "Status: {{workflow.status}}"
+
+            # In real scenario:
+            # Upload logs to S3/GCS for audit
+
+            echo "Logs archived successfully!"
+
+# ============================================================
+# FEATURES DEMONSTRATED IN THIS PIPELINE:
+#
+# 1. DAG Orchestration
+#    - Complex task dependencies
+#    - Parallel execution (lint, security, tests)
+#
+# 2. Steps Orchestration
+#    - Sequential steps in exit handler
+#    - Mixed with DAG
+#
+# 3. Parameters
+#    - Global workflow parameters
+#    - Task-level parameters
+#    - Output parameters
+#
+# 4. Artifacts
+#    - Security report artifact
+#    - Test report artifact
+#    - Build manifest artifact
+#
+# 5. Template Types
+#    - Container templates
+#    - Script templates
+#    - HTTP template (health check)
+#    - Suspend template (approval gate)
+#
+# 6. Daemon Containers
+#    - PostgreSQL for integration tests
+#    - Access via {{tasks.name.ip}}
+#
+# 7. Conditionals (when)
+#    - Production-only steps
+#    - Slack notifications toggle
+#
+# 8. Retry with Backoff
+#    - npm install with retry
+#    - Smoke tests with retry
+#
+# 9. Timeouts
+#    - Workflow-level timeout
+#    - Task-level timeouts
+#
+# 10. Exit Handlers
+#     - Notification on completion
+#     - Cleanup on success
+#     - Alert on failure
+#     - Log archival
+#
+# 11. Volumes
+#     - Shared workspace PVC
+#
+# 12. Artifact GC
+#     - OnWorkflowDeletion strategy
+#
+# ============================================================
+# HOW TO RUN:
+#
+# # Basic run (staging)
+# argo submit -n argo 01-complete-cicd-pipeline.yaml --watch
+#
+# # Production deployment (requires manual approval)
+# argo submit -n argo 01-complete-cicd-pipeline.yaml \
+#   -p environment=production \
+#   -p git-branch=main \
+#   --watch
+#
+# # Resume after approval
+# argo resume <workflow-name> -n argo
+#
+# # Custom repository
+# argo submit -n argo 01-complete-cicd-pipeline.yaml \
+#   -p git-repo="https://github.com/myorg/myapp" \
+#   -p git-branch="feature/new-feature" \
+#   --watch
+#
+# ============================================================

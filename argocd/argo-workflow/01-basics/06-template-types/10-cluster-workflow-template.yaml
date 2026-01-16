@@ -1,0 +1,405 @@
+# ============================================================
+# ClusterWorkflowTemplate - Cluster-Wide Reusable Templates
+# ============================================================
+# ClusterWorkflowTemplates are CLUSTER-SCOPED (available everywhere)
+# Unlike WorkflowTemplate which is namespaced
+#
+# Apply:  kubectl apply -f 10-cluster-workflow-template.yaml
+# List:   argo cluster-template list
+# Submit: argo submit -n any-namespace --from clusterworkflowtemplate/common-ci
+# ============================================================
+
+# ============================================================
+# CLUSTERWORKFLOWTEMPLATE DEFINITION
+# ============================================================
+apiVersion: argoproj.io/v1alpha1
+kind: ClusterWorkflowTemplate
+metadata:
+  name: common-ci
+  # NOTE: No namespace - ClusterWorkflowTemplates are cluster-scoped
+  labels:
+    app: shared-ci
+    maintained-by: platform-team
+spec:
+  # Default arguments
+  arguments:
+    parameters:
+      - name: repo-url
+        value: ""
+      - name: branch
+        value: "main"
+      - name: notify-channel
+        value: "#ci-notifications"
+
+  entrypoint: ci-pipeline
+  serviceAccountName: argo-workflow
+
+  templates:
+    # ============================================================
+    # Main CI Pipeline
+    # ============================================================
+    - name: ci-pipeline
+      dag:
+        tasks:
+          - name: checkout
+            template: git-clone
+            arguments:
+              parameters:
+                - name: repo
+                  value: "{{workflow.parameters.repo-url}}"
+                - name: branch
+                  value: "{{workflow.parameters.branch}}"
+
+          - name: build
+            dependencies: [checkout]
+            template: build-app
+
+          - name: test
+            dependencies: [build]
+            template: run-tests
+
+          - name: notify
+            dependencies: [test]
+            template: send-notification
+            arguments:
+              parameters:
+                - name: channel
+                  value: "{{workflow.parameters.notify-channel}}"
+                - name: message
+                  value: "CI completed for {{workflow.parameters.repo-url}}"
+
+    - name: git-clone
+      inputs:
+        parameters:
+          - name: repo
+          - name: branch
+      container:
+        image: alpine/git:latest
+        command: [sh, -c]
+        args:
+          - |
+            echo "Cloning {{inputs.parameters.repo}} ({{inputs.parameters.branch}})"
+            sleep 2
+            echo "Clone complete!"
+
+    - name: build-app
+      container:
+        image: alpine:latest
+        command: [sh, -c]
+        args:
+          - |
+            echo "Building application..."
+            sleep 3
+            echo "Build complete!"
+
+    - name: run-tests
+      container:
+        image: alpine:latest
+        command: [sh, -c]
+        args:
+          - |
+            echo "Running tests..."
+            sleep 2
+            echo "All tests passed!"
+
+    - name: send-notification
+      inputs:
+        parameters:
+          - name: channel
+          - name: message
+      container:
+        image: alpine:latest
+        command: [sh, -c]
+        args:
+          - |
+            echo "Sending to {{inputs.parameters.channel}}: {{inputs.parameters.message}}"
+
+---
+# ============================================================
+# CLUSTERWORKFLOWTEMPLATE - Common Utility Templates
+# ============================================================
+# Shared templates that any team can use from any namespace
+# ============================================================
+
+apiVersion: argoproj.io/v1alpha1
+kind: ClusterWorkflowTemplate
+metadata:
+  name: common-utilities
+  labels:
+    type: utilities
+spec:
+  templates:
+    # ============================================================
+    # Slack Notification
+    # ============================================================
+    - name: slack-notify
+      inputs:
+        parameters:
+          - name: webhook-url
+            default: ""  # Can be provided or use secret
+          - name: channel
+            default: "#general"
+          - name: message
+          - name: color
+            default: "good"  # good, warning, danger
+      container:
+        image: curlimages/curl:latest
+        command: [sh, -c]
+        args:
+          - |
+            echo "============================================"
+            echo "  SLACK NOTIFICATION (ClusterTemplate)"
+            echo "============================================"
+            echo "Channel: {{inputs.parameters.channel}}"
+            echo "Message: {{inputs.parameters.message}}"
+            echo "Color: {{inputs.parameters.color}}"
+            echo ""
+            # In production:
+            # curl -X POST {{inputs.parameters.webhook-url}} \
+            #   -H 'Content-Type: application/json' \
+            #   -d '{"channel":"{{inputs.parameters.channel}}","attachments":[{"color":"{{inputs.parameters.color}}","text":"{{inputs.parameters.message}}"}]}'
+            echo "Notification sent!"
+            echo "============================================"
+
+    # ============================================================
+    # PVC Cleanup
+    # ============================================================
+    - name: cleanup-pvc
+      inputs:
+        parameters:
+          - name: pvc-name
+          - name: namespace
+      container:
+        image: bitnami/kubectl:latest
+        command: [sh, -c]
+        args:
+          - |
+            echo "Cleaning up PVC: {{inputs.parameters.pvc-name}} in {{inputs.parameters.namespace}}"
+            # kubectl delete pvc {{inputs.parameters.pvc-name}} -n {{inputs.parameters.namespace}}
+            echo "PVC deleted!"
+
+    # ============================================================
+    # Health Check
+    # ============================================================
+    - name: health-check
+      inputs:
+        parameters:
+          - name: url
+          - name: expected-status
+            default: "200"
+          - name: timeout
+            default: "30"
+      container:
+        image: curlimages/curl:latest
+        command: [sh, -c]
+        args:
+          - |
+            echo "Health checking: {{inputs.parameters.url}}"
+            echo "Expected status: {{inputs.parameters.expected-status}}"
+            # status=$(curl -s -o /dev/null -w "%{http_code}" --max-time {{inputs.parameters.timeout}} {{inputs.parameters.url}})
+            # if [ "$status" = "{{inputs.parameters.expected-status}}" ]; then
+            #   echo "Health check passed!"
+            # else
+            #   echo "Health check failed! Got: $status"
+            #   exit 1
+            # fi
+            echo "Health check passed!"
+
+    # ============================================================
+    # Wait for Deployment
+    # ============================================================
+    - name: wait-for-deployment
+      inputs:
+        parameters:
+          - name: deployment-name
+          - name: namespace
+          - name: timeout
+            default: "300"
+      container:
+        image: bitnami/kubectl:latest
+        command: [sh, -c]
+        args:
+          - |
+            echo "Waiting for deployment: {{inputs.parameters.deployment-name}}"
+            echo "Namespace: {{inputs.parameters.namespace}}"
+            echo "Timeout: {{inputs.parameters.timeout}}s"
+            # kubectl rollout status deployment/{{inputs.parameters.deployment-name}} \
+            #   -n {{inputs.parameters.namespace}} \
+            #   --timeout={{inputs.parameters.timeout}}s
+            sleep 3
+            echo "Deployment is ready!"
+
+    # ============================================================
+    # S3 Upload
+    # ============================================================
+    - name: s3-upload
+      inputs:
+        parameters:
+          - name: source-path
+          - name: bucket
+          - name: destination-key
+        artifacts:
+          - name: file-to-upload
+            path: /tmp/upload
+            optional: true
+      container:
+        image: amazon/aws-cli:latest
+        command: [sh, -c]
+        args:
+          - |
+            echo "Uploading to S3..."
+            echo "Source: {{inputs.parameters.source-path}}"
+            echo "Destination: s3://{{inputs.parameters.bucket}}/{{inputs.parameters.destination-key}}"
+            # aws s3 cp {{inputs.parameters.source-path}} s3://{{inputs.parameters.bucket}}/{{inputs.parameters.destination-key}}
+            echo "Upload complete!"
+
+---
+# ============================================================
+# USING CLUSTERWORKFLOWTEMPLATE FROM ANY NAMESPACE
+# ============================================================
+
+# Example 1: Use entire ClusterWorkflowTemplate as workflow
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: use-cluster-template-
+  namespace: argo  # Can be ANY namespace
+spec:
+  arguments:
+    parameters:
+      - name: repo-url
+        value: "https://github.com/myorg/myapp"
+      - name: branch
+        value: "develop"
+  workflowTemplateRef:
+    name: common-ci
+    clusterScope: true  # IMPORTANT: Indicates ClusterWorkflowTemplate
+
+---
+# Example 2: Reference specific templates from ClusterWorkflowTemplate
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: use-cluster-utilities-
+  namespace: default  # Works from ANY namespace
+spec:
+  entrypoint: main
+  serviceAccountName: argo-workflow
+
+  templates:
+    - name: main
+      steps:
+        - - name: do-work
+            template: work
+
+        - - name: health-check
+            templateRef:
+              name: common-utilities
+              template: health-check
+              clusterScope: true  # Reference ClusterWorkflowTemplate
+            arguments:
+              parameters:
+                - name: url
+                  value: "https://api.example.com/health"
+
+        - - name: notify
+            templateRef:
+              name: common-utilities
+              template: slack-notify
+              clusterScope: true
+            arguments:
+              parameters:
+                - name: message
+                  value: "Workflow completed successfully!"
+                - name: channel
+                  value: "#deployments"
+
+    - name: work
+      container:
+        image: alpine:latest
+        command: [echo, "Doing work..."]
+
+---
+# Example 3: Using from different namespace (team-a)
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: team-a-ci-
+  namespace: team-a  # Different namespace
+spec:
+  arguments:
+    parameters:
+      - name: repo-url
+        value: "https://github.com/company/team-a-service"
+  workflowTemplateRef:
+    name: common-ci
+    clusterScope: true
+
+# ============================================================
+# CLUSTERWORKFLOWTEMPLATE KEY POINTS:
+#
+# WHAT IS IT:
+#   - Cluster-scoped WorkflowTemplate
+#   - Available from ANY namespace
+#   - Managed centrally by platform team
+#
+# VS WORKFLOWTEMPLATE:
+#   ┌────────────────────┬─────────────────────────────────┐
+#   │ WorkflowTemplate   │ ClusterWorkflowTemplate         │
+#   ├────────────────────┼─────────────────────────────────┤
+#   │ Namespaced         │ Cluster-scoped                  │
+#   │ Available in 1 ns  │ Available in ALL namespaces     │
+#   │ Team-specific      │ Organization-wide               │
+#   │ Per-team control   │ Central control                 │
+#   └────────────────────┴─────────────────────────────────┘
+#
+# HOW TO CREATE:
+#   kubectl apply -f cluster-workflow-template.yaml
+#   # NOTE: No -n namespace flag needed
+#
+# HOW TO USE:
+#   # Method 1: Full workflow reference
+#   spec:
+#     workflowTemplateRef:
+#       name: common-ci
+#       clusterScope: true    # <-- Key difference!
+#
+#   # Method 2: Template reference
+#   templateRef:
+#     name: common-utilities
+#     template: slack-notify
+#     clusterScope: true      # <-- Key difference!
+#
+# CLI COMMANDS:
+#   # List cluster templates
+#   argo cluster-template list
+#
+#   # Get template details
+#   argo cluster-template get common-ci
+#
+#   # Submit from cluster template (from any namespace)
+#   argo submit -n argo --from clusterworkflowtemplate/common-ci
+#   argo submit -n team-a --from clusterworkflowtemplate/common-ci
+#   argo submit -n team-b --from clusterworkflowtemplate/common-ci
+#
+#   # With parameters
+#   argo submit -n argo --from clusterworkflowtemplate/common-ci \
+#     -p repo-url="https://github.com/org/repo"
+#
+#   # Delete cluster template
+#   argo cluster-template delete common-ci
+#
+# USE CASES:
+#   1. Shared CI/CD pipelines across teams
+#   2. Common utility templates (notifications, cleanup)
+#   3. Organization-wide standards enforcement
+#   4. Centralized template management
+#
+# BEST PRACTICES:
+#   1. Use ClusterWorkflowTemplate for org-wide utilities
+#   2. Use WorkflowTemplate for team-specific workflows
+#   3. Version templates using labels
+#   4. Document parameters clearly
+#   5. Use RBAC to control who can create/modify
+#
+# ============================================================

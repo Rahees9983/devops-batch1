@@ -1,0 +1,104 @@
+# ============================================================
+# Simple DAG Workflow
+# ============================================================
+# This workflow demonstrates a simple DAG with dependencies
+#
+# Run: argo submit -n argo 01-simple-dag.yaml --watch
+# ============================================================
+
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: simple-dag-
+spec:
+  entrypoint: main
+
+  templates:
+    - name: main
+      dag:
+        tasks:
+          # Task A: No dependencies, runs first
+          - name: task-a
+            template: task
+            arguments:
+              parameters:
+                - name: name
+                  value: "A"
+                - name: duration
+                  value: "2"
+
+          # Task B: Depends on A
+          - name: task-b
+            dependencies: [task-a]
+            template: task
+            arguments:
+              parameters:
+                - name: name
+                  value: "B"
+                - name: duration
+                  value: "3"
+
+          # Task C: Depends on A (runs parallel with B)
+          - name: task-c
+            dependencies: [task-a]
+            template: task
+            arguments:
+              parameters:
+                - name: name
+                  value: "C"
+                - name: duration
+                  value: "2"
+
+          # Task D: Depends on B and C
+          - name: task-d
+            dependencies: [task-b, task-c]
+            template: task
+            arguments:
+              parameters:
+                - name: name
+                  value: "D"
+                - name: duration
+                  value: "2"
+
+    # Generic task template
+    - name: task
+      inputs:
+        parameters:
+          - name: name
+          - name: duration
+      container:
+        image: alpine:latest
+        command: [sh, -c]
+        args:
+          - |
+            echo "Task {{inputs.parameters.name}} starting..."
+            sleep {{inputs.parameters.duration}}
+            echo "Task {{inputs.parameters.name}} completed after {{inputs.parameters.duration}}s"
+
+# ============================================================
+# DAG STRUCTURE:
+#
+#           ┌─────────┐
+#           │    A    │  (runs first)
+#           │  (2s)   │
+#           └────┬────┘
+#                │
+#       ┌────────┴────────┐
+#       │                 │
+#       ▼                 ▼
+#  ┌─────────┐       ┌─────────┐
+#  │    B    │       │    C    │  (run in parallel)
+#  │  (3s)   │       │  (2s)   │
+#  └────┬────┘       └────┬────┘
+#       │                 │
+#       └────────┬────────┘
+#                │
+#                ▼
+#           ┌─────────┐
+#           │    D    │  (runs after B and C)
+#           │  (2s)   │
+#           └─────────┘
+#
+# Total Time: 2 + 3 + 2 = 7 seconds
+# (C finishes in parallel with B, so doesn't add time)
+# ============================================================

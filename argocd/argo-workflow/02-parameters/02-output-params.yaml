@@ -1,0 +1,133 @@
+# ============================================================
+# Output Parameters
+# ============================================================
+# This workflow shows how to capture outputs from templates
+# Outputs can be from files, stdout, or expressions
+#
+# Run: argo submit -n argo 02-output-params.yaml --watch
+# ============================================================
+
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: output-params-
+spec:
+  entrypoint: main
+
+  templates:
+    - name: main
+      steps:
+        # Step 1: Generate some data
+        - - name: generate
+            template: generate-data
+
+        # Step 2: Use the output from Step 1
+        - - name: consume
+            template: consume-data
+            arguments:
+              parameters:
+                - name: data
+                  # Reference output from 'generate' step
+                  value: "{{steps.generate.outputs.parameters.generated-data}}"
+                - name: random-number
+                  value: "{{steps.generate.outputs.parameters.random-number}}"
+
+    # Template that generates output parameters
+    - name: generate-data
+      container:
+        image: alpine:latest
+        command: [sh, -c]
+        args:
+          - |
+            echo "Generating data..."
+
+            # Write to a file (for file-based output)
+            echo '{"name": "argo", "version": "3.5", "type": "workflow"}' > /tmp/data.json
+
+            # Generate a random number
+            RANDOM_NUM=$((RANDOM % 100))
+            echo $RANDOM_NUM > /tmp/random.txt
+
+            echo "Generated data.json and random number: $RANDOM_NUM"
+
+      # Define outputs
+      outputs:
+        parameters:
+          # Output from a file
+          - name: generated-data
+            valueFrom:
+              path: /tmp/data.json
+
+          # Another output from a different file
+          - name: random-number
+            valueFrom:
+              path: /tmp/random.txt
+
+    # Template that consumes input parameters
+    - name: consume-data
+      inputs:
+        parameters:
+          - name: data
+          - name: random-number
+      script:
+        image: python:3.9-alpine
+        command: [python]
+        source: |
+          import json
+
+          data_str = '''{{inputs.parameters.data}}'''
+          random_num = "{{inputs.parameters.random-number}}".strip()
+
+          print("=" * 50)
+          print("Received Data from Previous Step")
+          print("=" * 50)
+
+          # Parse JSON data
+          data = json.loads(data_str)
+          print(f"Name: {data['name']}")
+          print(f"Version: {data['version']}")
+          print(f"Type: {data['type']}")
+          print(f"Random Number: {random_num}")
+
+          print("=" * 50)
+
+# ============================================================
+# OUTPUT PARAMETER METHODS:
+#
+# 1. From File:
+#    valueFrom:
+#      path: /tmp/output.txt
+#
+# 2. From Expression:
+#    valueFrom:
+#      expression: "steps['step-name'].outputs.result"
+#
+# 3. Default Value (if file doesn't exist):
+#    valueFrom:
+#      path: /tmp/output.txt
+#      default: "default value"
+#
+# ============================================================
+# DATA FLOW:
+#
+# ┌─────────────────────┐
+# │     generate        │
+# │                     │
+# │  Writes to:         │
+# │  /tmp/data.json     │
+# │  /tmp/random.txt    │
+# │                     │
+# │  outputs:           │
+# │  - generated-data   │◄──────┐
+# │  - random-number    │◄────┐ │
+# └──────────┬──────────┘     │ │
+#            │                │ │
+#            ▼                │ │
+# ┌─────────────────────┐     │ │
+# │     consume         │     │ │
+# │                     │     │ │
+# │  inputs:            │     │ │
+# │  - data ────────────┼─────┼─┘
+# │  - random-number ───┼─────┘
+# └─────────────────────┘
+# ============================================================

@@ -1,0 +1,361 @@
+# ============================================================
+# Artifact Garbage Collection
+# ============================================================
+# Automatically clean up artifacts to save storage space
+# Can be configured at workflow or artifact level
+#
+# Note: Requires artifact repository configuration (S3, GCS, etc.)
+# Apply: kubectl apply -n argo -f 04-artifact-garbage-collection.yaml
+# ============================================================
+
+# ============================================================
+# Example 1: Workflow-Level Garbage Collection
+# ============================================================
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: artifact-gc-workflow-
+spec:
+  entrypoint: main
+  serviceAccountName: argo-workflow
+
+  # ============================================================
+  # WORKFLOW-LEVEL ARTIFACT GC CONFIGURATION
+  # ============================================================
+  artifactGC:
+    # Strategy: When to delete artifacts
+    strategy: OnWorkflowDeletion  # Delete when workflow is deleted
+
+    # Alternative strategies:
+    # strategy: OnWorkflowCompletion  # Delete when workflow completes
+    # strategy: Never                  # Never auto-delete
+
+  templates:
+    - name: main
+      steps:
+        - - name: generate
+            template: generate-data
+        - - name: process
+            template: process-data
+            arguments:
+              artifacts:
+                - name: input
+                  from: "{{steps.generate.outputs.artifacts.data}}"
+
+    - name: generate-data
+      container:
+        image: alpine:latest
+        command: [sh, -c]
+        args:
+          - |
+            echo "Generating data..."
+            echo '{"id": 1, "data": "sample"}' > /tmp/data.json
+            echo "Data generated!"
+      outputs:
+        artifacts:
+          - name: data
+            path: /tmp/data.json
+            # Artifact will be garbage collected based on workflow-level strategy
+
+    - name: process-data
+      inputs:
+        artifacts:
+          - name: input
+            path: /tmp/input.json
+      container:
+        image: alpine:latest
+        command: [sh, -c]
+        args:
+          - |
+            echo "Processing data..."
+            cat /tmp/input.json
+            echo "Processing complete!"
+
+---
+# ============================================================
+# Example 2: Artifact-Level Garbage Collection
+# ============================================================
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: artifact-gc-per-artifact-
+spec:
+  entrypoint: main
+  serviceAccountName: argo-workflow
+
+  templates:
+    - name: main
+      steps:
+        - - name: create-artifacts
+            template: create-multiple-artifacts
+        - - name: use-artifacts
+            template: use-artifacts
+            arguments:
+              artifacts:
+                - name: important-data
+                  from: "{{steps.create-artifacts.outputs.artifacts.important}}"
+                - name: temp-data
+                  from: "{{steps.create-artifacts.outputs.artifacts.temporary}}"
+
+    - name: create-multiple-artifacts
+      container:
+        image: alpine:latest
+        command: [sh, -c]
+        args:
+          - |
+            echo "Creating multiple artifacts..."
+
+            # Important data - keep longer
+            echo '{"type": "important", "keep": true}' > /tmp/important.json
+
+            # Temporary data - can be deleted sooner
+            echo '{"type": "temporary", "keep": false}' > /tmp/temporary.json
+
+            # Build logs - delete on completion
+            echo "Build started at $(date)" > /tmp/build.log
+            echo "Step 1: Done" >> /tmp/build.log
+            echo "Step 2: Done" >> /tmp/build.log
+            echo "Build completed at $(date)" >> /tmp/build.log
+
+            echo "Artifacts created!"
+
+      outputs:
+        artifacts:
+          # Important artifact - never auto-delete
+          - name: important
+            path: /tmp/important.json
+            artifactGC:
+              strategy: Never
+
+          # Temporary artifact - delete when workflow completes
+          - name: temporary
+            path: /tmp/temporary.json
+            artifactGC:
+              strategy: OnWorkflowCompletion
+
+          # Build logs - delete when workflow is deleted
+          - name: build-logs
+            path: /tmp/build.log
+            artifactGC:
+              strategy: OnWorkflowDeletion
+
+    - name: use-artifacts
+      inputs:
+        artifacts:
+          - name: important-data
+            path: /tmp/important.json
+          - name: temp-data
+            path: /tmp/temp.json
+      container:
+        image: alpine:latest
+        command: [sh, -c]
+        args:
+          - |
+            echo "Using artifacts..."
+            echo "Important: $(cat /tmp/important.json)"
+            echo "Temporary: $(cat /tmp/temp.json)"
+
+---
+# ============================================================
+# Example 3: Service Account for Artifact GC
+# ============================================================
+# The service account needs permissions to delete artifacts
+# from the artifact repository (S3, GCS, etc.)
+# ============================================================
+
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: artifact-gc-sa
+  namespace: argo
+  annotations:
+    # For AWS S3 with IRSA
+    # eks.amazonaws.com/role-arn: arn:aws:iam::ACCOUNT:role/artifact-gc-role
+
+    # For GCS with Workload Identity
+    # iam.gke.io/gcp-service-account: artifact-gc@project.iam.gserviceaccount.com
+    {}
+
+---
+# ============================================================
+# Example 4: Workflow with GC and Artifact Repository
+# ============================================================
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: artifact-gc-s3-
+spec:
+  entrypoint: main
+  serviceAccountName: argo-workflow
+
+  # Artifact repository configuration
+  artifactRepositoryRef:
+    configMap: artifact-repositories
+    key: default-v1
+
+  # Garbage collection configuration
+  artifactGC:
+    strategy: OnWorkflowCompletion
+    # Service account with permissions to delete from artifact store
+    serviceAccountName: artifact-gc-sa
+    # Pod metadata for GC pods
+    podMetadata:
+      labels:
+        app: artifact-gc
+      annotations:
+        description: "Artifact garbage collection pod"
+
+  templates:
+    - name: main
+      steps:
+        - - name: step1
+            template: create-artifact
+        - - name: step2
+            template: use-artifact
+            arguments:
+              artifacts:
+                - name: input
+                  from: "{{steps.step1.outputs.artifacts.output}}"
+
+    - name: create-artifact
+      container:
+        image: alpine:latest
+        command: [sh, -c]
+        args:
+          - |
+            echo '{"message": "This artifact will be garbage collected"}' > /tmp/data.json
+      outputs:
+        artifacts:
+          - name: output
+            path: /tmp/data.json
+
+    - name: use-artifact
+      inputs:
+        artifacts:
+          - name: input
+            path: /tmp/input.json
+      container:
+        image: alpine:latest
+        command: [echo, "Artifact received and used"]
+
+---
+# ============================================================
+# Example 5: ConfigMap for Artifact Repository with GC
+# ============================================================
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: artifact-repositories
+  namespace: argo
+data:
+  # S3-compatible artifact repository
+  default-v1: |
+    s3:
+      bucket: my-argo-artifacts
+      endpoint: s3.amazonaws.com
+      region: us-east-1
+      # Use IRSA or instance profile for credentials
+      useSDKCreds: true
+      # Key prefix for organization
+      keyPrefix: workflows/
+
+  # MinIO (local S3-compatible)
+  minio: |
+    s3:
+      bucket: argo-artifacts
+      endpoint: minio.minio:9000
+      insecure: true
+      accessKeySecret:
+        name: minio-creds
+        key: accesskey
+      secretKeySecret:
+        name: minio-creds
+        key: secretkey
+
+---
+# ============================================================
+# Example 6: Artifact GC with ForceFinalizerRemoval
+# ============================================================
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: artifact-gc-force-
+spec:
+  entrypoint: main
+  serviceAccountName: argo-workflow
+
+  artifactGC:
+    strategy: OnWorkflowDeletion
+    # Force remove finalizers even if GC fails
+    # Use with caution - may leave orphaned artifacts
+    forceFinalizerRemoval: false
+
+  templates:
+    - name: main
+      container:
+        image: alpine:latest
+        command: [sh, -c]
+        args:
+          - |
+            echo "Creating artifact..."
+            echo "data" > /tmp/output.txt
+      outputs:
+        artifacts:
+          - name: output
+            path: /tmp/output.txt
+
+# ============================================================
+# ARTIFACT GARBAGE COLLECTION KEY POINTS:
+#
+# GC STRATEGIES:
+#   Never                  - Never auto-delete (manual cleanup required)
+#   OnWorkflowCompletion   - Delete when workflow succeeds or fails
+#   OnWorkflowDeletion     - Delete when workflow object is deleted
+#
+# CONFIGURATION LEVELS:
+#   1. Workflow Level (applies to all artifacts):
+#      spec:
+#        artifactGC:
+#          strategy: OnWorkflowCompletion
+#
+#   2. Artifact Level (per-artifact override):
+#      outputs:
+#        artifacts:
+#          - name: my-artifact
+#            path: /tmp/file
+#            artifactGC:
+#              strategy: Never
+#
+# PRECEDENCE:
+#   Artifact-level > Workflow-level
+#
+# SERVICE ACCOUNT REQUIREMENTS:
+#   - SA needs permissions to delete from artifact store
+#   - For S3: s3:DeleteObject permission
+#   - For GCS: storage.objects.delete permission
+#
+# HOW GC WORKS:
+#   1. Workflow completes (or is deleted based on strategy)
+#   2. Argo creates GC pods to delete artifacts
+#   3. GC pods use service account credentials
+#   4. Artifacts are deleted from repository
+#   5. Workflow finalizers are removed
+#
+# BEST PRACTICES:
+#   1. Use OnWorkflowCompletion for temporary artifacts
+#   2. Use Never for artifacts needed for audit/debugging
+#   3. Use OnWorkflowDeletion when you need to inspect after completion
+#   4. Set appropriate retention policies in artifact store too
+#   5. Monitor GC pod failures in logs
+#
+# TROUBLESHOOTING:
+#   # Check GC status
+#   kubectl get workflows -n argo -o jsonpath='{.items[*].status.artifactGCStatus}'
+#
+#   # Check for stuck finalizers
+#   kubectl get workflows -n argo -o jsonpath='{.items[*].metadata.finalizers}'
+#
+#   # Force remove finalizers (use with caution!)
+#   kubectl patch workflow <name> -n argo --type merge -p '{"metadata":{"finalizers":null}}'
+#
+# ============================================================

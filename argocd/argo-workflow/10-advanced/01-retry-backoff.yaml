@@ -1,0 +1,123 @@
+# ============================================================
+# Retry and Backoff Strategies
+# ============================================================
+# This workflow demonstrates retry logic and backoff strategies
+#
+# Run: argo submit -n argo 01-retry-backoff.yaml --watch
+# ============================================================
+
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: retry-backoff-
+spec:
+  entrypoint: main
+
+  templates:
+    - name: main
+      steps:
+        # Example 1: Simple retry
+        - - name: simple-retry
+            template: flaky-task-simple
+
+        # Example 2: Exponential backoff
+        - - name: exponential-retry
+            template: flaky-task-exponential
+
+        # Example 3: Retry with expression
+        - - name: conditional-retry
+            template: flaky-task-conditional
+
+    # Simple retry - fixed retries
+    - name: flaky-task-simple
+      retryStrategy:
+        limit: 3                    # Max 3 retries
+        retryPolicy: "Always"       # Retry on any failure
+
+      container:
+        image: alpine:latest
+        command: [sh, -c]
+        args:
+          - |
+            echo "Attempting task..."
+            RANDOM_NUM=$((RANDOM % 10))
+            echo "Random number: $RANDOM_NUM"
+            if [ $RANDOM_NUM -lt 7 ]; then
+              echo "Task failed! (will retry)"
+              exit 1
+            fi
+            echo "Task succeeded!"
+
+    # Exponential backoff retry
+    - name: flaky-task-exponential
+      retryStrategy:
+        limit: 5
+        retryPolicy: "Always"
+        backoff:
+          duration: "2s"            # Initial delay
+          factor: 2                 # Multiply by 2 each retry
+          maxDuration: "30s"        # Max delay between retries
+
+      container:
+        image: alpine:latest
+        command: [sh, -c]
+        args:
+          - |
+            echo "Attempting with exponential backoff..."
+            echo "Retry delays: 2s, 4s, 8s, 16s, 30s (capped)"
+            RANDOM_NUM=$((RANDOM % 10))
+            if [ $RANDOM_NUM -lt 5 ]; then
+              echo "Failed! Will retry with backoff"
+              exit 1
+            fi
+            echo "Success!"
+
+    # Retry with expression (only retry on specific errors)
+    - name: flaky-task-conditional
+      retryStrategy:
+        limit: 3
+        retryPolicy: "Always"
+        # Only retry if exit code is 1 (not 2)
+        expression: "lastRetry.status == 'Failed' && asInt(lastRetry.exitCode) == 1"
+
+      container:
+        image: alpine:latest
+        command: [sh, -c]
+        args:
+          - |
+            echo "Conditional retry example..."
+            RANDOM_NUM=$((RANDOM % 10))
+            if [ $RANDOM_NUM -lt 3 ]; then
+              echo "Retryable error (exit 1)"
+              exit 1
+            elif [ $RANDOM_NUM -lt 5 ]; then
+              echo "Non-retryable error (exit 2)"
+              exit 2
+            fi
+            echo "Success!"
+
+# ============================================================
+# RETRY POLICIES:
+#
+#   Always          - Retry on any failure
+#   OnFailure       - Retry on non-zero exit
+#   OnError         - Retry on system errors only
+#   OnTransientError - Retry on transient errors
+#
+# BACKOFF STRATEGY:
+#
+#   Attempt 1: immediate
+#   Attempt 2: wait 2s   (duration)
+#   Attempt 3: wait 4s   (duration * factor)
+#   Attempt 4: wait 8s   (duration * factor^2)
+#   Attempt 5: wait 16s  (duration * factor^3)
+#   Attempt 6: wait 30s  (capped at maxDuration)
+#
+# RETRY TIMELINE:
+#
+#   ┌─────┐     ┌─────┐     ┌─────┐     ┌─────┐
+#   │ Run │-2s-│ Run │-4s-│ Run │-8s-│ Run │ ✓
+#   │  ✗  │     │  ✗  │     │  ✗  │     │     │
+#   └─────┘     └─────┘     └─────┘     └─────┘
+#
+# ============================================================

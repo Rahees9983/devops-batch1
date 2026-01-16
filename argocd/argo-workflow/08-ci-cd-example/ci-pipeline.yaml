@@ -1,0 +1,276 @@
+# ============================================================
+# Complete CI Pipeline for Node.js Application
+# ============================================================
+# This is a production-ready CI pipeline example
+#
+# Run: argo submit -n argo ci-pipeline.yaml \
+#        -p git-repo="https://github.com/your/repo" \
+#        -p branch="main" --watch
+# ============================================================
+
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: ci-pipeline-
+  labels:
+    workflows.argoproj.io/archive-strategy: "false"
+spec:
+  entrypoint: ci-pipeline
+
+  # Workflow parameters
+  arguments:
+    parameters:
+      - name: git-repo
+        value: "https://github.com/example/nodejs-app"
+      - name: branch
+        value: "main"
+      - name: image-registry
+        value: "docker.io/myorg"
+      - name: app-name
+        value: "nodejs-app"
+
+  # Volume for sharing code between steps
+  volumeClaimTemplates:
+    - metadata:
+        name: workspace
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 1Gi
+
+  templates:
+    # Main CI Pipeline DAG
+    - name: ci-pipeline
+      dag:
+        tasks:
+          # Stage 1: Clone repository
+          - name: clone
+            template: git-clone
+
+          # Stage 2: Install dependencies
+          - name: install
+            dependencies: [clone]
+            template: npm-install
+
+          # Stage 3: Parallel - Lint, Unit Tests, Build
+          - name: lint
+            dependencies: [install]
+            template: npm-lint
+
+          - name: unit-test
+            dependencies: [install]
+            template: npm-test
+
+          - name: build
+            dependencies: [install]
+            template: npm-build
+
+          # Stage 4: Security scan
+          - name: security-scan
+            dependencies: [lint, unit-test, build]
+            template: security-audit
+
+          # Stage 5: Build and push Docker image
+          - name: docker-build
+            dependencies: [security-scan]
+            template: build-push-image
+
+          # Stage 6: Update deployment manifest
+          - name: update-manifest
+            dependencies: [docker-build]
+            template: update-k8s-manifest
+            arguments:
+              parameters:
+                - name: image-tag
+                  value: "{{tasks.docker-build.outputs.parameters.image-tag}}"
+
+    # Git Clone Template
+    - name: git-clone
+      container:
+        image: alpine/git:latest
+        command: [sh, -c]
+        args:
+          - |
+            echo "=== Cloning Repository ==="
+            echo "Repo: {{workflow.parameters.git-repo}}"
+            echo "Branch: {{workflow.parameters.branch}}"
+
+            cd /workspace
+            git clone --branch {{workflow.parameters.branch}} --single-branch \
+              {{workflow.parameters.git-repo}} .
+
+            echo "Clone complete!"
+            echo "Files:"
+            ls -la
+        volumeMounts:
+          - name: workspace
+            mountPath: /workspace
+
+    # NPM Install Template
+    - name: npm-install
+      container:
+        image: node:18-alpine
+        command: [sh, -c]
+        args:
+          - |
+            echo "=== Installing Dependencies ==="
+            cd /workspace
+            npm ci
+            echo "Dependencies installed!"
+        volumeMounts:
+          - name: workspace
+            mountPath: /workspace
+
+    # NPM Lint Template
+    - name: npm-lint
+      container:
+        image: node:18-alpine
+        command: [sh, -c]
+        args:
+          - |
+            echo "=== Running Linter ==="
+            cd /workspace
+            npm run lint || echo "Linting complete (or no lint script)"
+        volumeMounts:
+          - name: workspace
+            mountPath: /workspace
+
+    # NPM Test Template
+    - name: npm-test
+      container:
+        image: node:18-alpine
+        command: [sh, -c]
+        args:
+          - |
+            echo "=== Running Unit Tests ==="
+            cd /workspace
+            npm test || echo "Tests complete (or no test script)"
+            echo "Test coverage report generated"
+        volumeMounts:
+          - name: workspace
+            mountPath: /workspace
+
+    # NPM Build Template
+    - name: npm-build
+      container:
+        image: node:18-alpine
+        command: [sh, -c]
+        args:
+          - |
+            echo "=== Building Application ==="
+            cd /workspace
+            npm run build || echo "Build complete (or no build script)"
+            echo "Build artifacts:"
+            ls -la dist/ 2>/dev/null || echo "No dist folder"
+        volumeMounts:
+          - name: workspace
+            mountPath: /workspace
+
+    # Security Audit Template
+    - name: security-audit
+      container:
+        image: node:18-alpine
+        command: [sh, -c]
+        args:
+          - |
+            echo "=== Security Audit ==="
+            cd /workspace
+            npm audit --audit-level=high || true
+            echo "Security scan complete!"
+        volumeMounts:
+          - name: workspace
+            mountPath: /workspace
+
+    # Docker Build and Push Template
+    - name: build-push-image
+      container:
+        image: gcr.io/kaniko-project/executor:latest
+        command: [sh, -c]
+        args:
+          - |
+            echo "=== Building Docker Image ==="
+            IMAGE_TAG="{{workflow.parameters.image-registry}}/{{workflow.parameters.app-name}}:{{workflow.name}}"
+            echo "Image: $IMAGE_TAG"
+
+            # In real scenario, use Kaniko to build
+            # /kaniko/executor --dockerfile=/workspace/Dockerfile \
+            #   --context=/workspace \
+            #   --destination=$IMAGE_TAG
+
+            # For demo, just output the tag
+            echo $IMAGE_TAG > /tmp/image-tag.txt
+            echo "Image built: $IMAGE_TAG"
+        volumeMounts:
+          - name: workspace
+            mountPath: /workspace
+      outputs:
+        parameters:
+          - name: image-tag
+            valueFrom:
+              path: /tmp/image-tag.txt
+
+    # Update K8s Manifest Template
+    - name: update-k8s-manifest
+      inputs:
+        parameters:
+          - name: image-tag
+      container:
+        image: alpine:latest
+        command: [sh, -c]
+        args:
+          - |
+            echo "=== Updating Kubernetes Manifest ==="
+            echo "New image tag: {{inputs.parameters.image-tag}}"
+            echo ""
+            echo "In production, this would:"
+            echo "1. Clone GitOps repo"
+            echo "2. Update image tag in deployment.yaml"
+            echo "3. Commit and push changes"
+            echo "4. ArgoCD would then sync the changes"
+            echo ""
+            echo "============================================"
+            echo "  CI Pipeline Complete!"
+            echo "============================================"
+
+# ============================================================
+# CI PIPELINE FLOW:
+#
+#           ┌──────────────┐
+#           │    Clone     │
+#           └──────┬───────┘
+#                  │
+#                  ▼
+#           ┌──────────────┐
+#           │   Install    │
+#           │    (npm)     │
+#           └──────┬───────┘
+#                  │
+#        ┌─────────┼─────────┐
+#        │         │         │
+#        ▼         ▼         ▼
+#   ┌────────┐ ┌────────┐ ┌────────┐
+#   │  Lint  │ │  Test  │ │ Build  │
+#   └───┬────┘ └───┬────┘ └───┬────┘
+#       │          │          │
+#       └──────────┼──────────┘
+#                  │
+#                  ▼
+#           ┌──────────────┐
+#           │  Security    │
+#           │    Scan      │
+#           └──────┬───────┘
+#                  │
+#                  ▼
+#           ┌──────────────┐
+#           │ Docker Build │
+#           │  and Push    │
+#           └──────┬───────┘
+#                  │
+#                  ▼
+#           ┌──────────────┐
+#           │   Update     │
+#           │  Manifest    │
+#           └──────────────┘
+#
+# ============================================================

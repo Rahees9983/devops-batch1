@@ -1,0 +1,103 @@
+# ============================================================
+# Input Parameters
+# ============================================================
+# This workflow shows how to accept input parameters
+# Parameters can have default values or be required
+#
+# Run with defaults:
+#   argo submit -n argo 01-input-params.yaml --watch
+#
+# Run with custom parameters:
+#   argo submit -n argo 01-input-params.yaml -p name="John" -p greeting="Hi" --watch
+# ============================================================
+
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: input-params-
+spec:
+  entrypoint: main
+
+  # Workflow-level parameters (inputs to the workflow)
+  arguments:
+    parameters:
+      - name: name
+        value: "World"        # Default value
+      - name: greeting
+        value: "Hello"        # Default value
+      - name: repeat-count
+        value: "3"            # Default value
+
+  templates:
+    - name: main
+      steps:
+        - - name: greet
+            template: greeter
+            arguments:
+              parameters:
+                # Pass workflow parameters to template
+                - name: name
+                  value: "{{workflow.parameters.name}}"
+                - name: greeting
+                  value: "{{workflow.parameters.greeting}}"
+                - name: count
+                  value: "{{workflow.parameters.repeat-count}}"
+
+    - name: greeter
+      inputs:
+        parameters:
+          - name: name
+          - name: greeting
+          - name: count
+      script:
+        image: python:3.9-alpine
+        command: [python]
+        source: |
+          name = "{{inputs.parameters.name}}"
+          greeting = "{{inputs.parameters.greeting}}"
+          count = int("{{inputs.parameters.count}}")
+
+          print("=" * 40)
+          print("Input Parameters Demo")
+          print("=" * 40)
+          print(f"Name: {name}")
+          print(f"Greeting: {greeting}")
+          print(f"Count: {count}")
+          print("-" * 40)
+
+          for i in range(count):
+              print(f"{i+1}. {greeting}, {name}!")
+
+          print("=" * 40)
+
+# ============================================================
+# PARAMETER FLOW:
+#
+# ┌─────────────────────────────────────────────────────────┐
+# │  CLI: argo submit -p name="John" -p greeting="Hi"       │
+# └───────────────────────┬─────────────────────────────────┘
+#                         │
+#                         ▼
+# ┌─────────────────────────────────────────────────────────┐
+# │  Workflow Arguments:                                     │
+# │    - name: "John" (overridden)                          │
+# │    - greeting: "Hi" (overridden)                        │
+# │    - repeat-count: "3" (default)                        │
+# └───────────────────────┬─────────────────────────────────┘
+#                         │
+#                         ▼
+# ┌─────────────────────────────────────────────────────────┐
+# │  Template (greeter):                                     │
+# │    inputs.parameters.name = "John"                      │
+# │    inputs.parameters.greeting = "Hi"                    │
+# │    inputs.parameters.count = "3"                        │
+# └───────────────────────┬─────────────────────────────────┘
+#                         │
+#                         ▼
+# ┌─────────────────────────────────────────────────────────┐
+# │  Output:                                                 │
+# │    1. Hi, John!                                         │
+# │    2. Hi, John!                                         │
+# │    3. Hi, John!                                         │
+# └─────────────────────────────────────────────────────────┘
+# ============================================================

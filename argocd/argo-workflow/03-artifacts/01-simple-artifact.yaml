@@ -1,0 +1,172 @@
+# ============================================================
+# Simple Artifact Passing
+# ============================================================
+# This workflow demonstrates passing files between steps
+# Using the default emissary executor (no external storage)
+#
+# Run: argo submit -n argo 01-simple-artifact.yaml --watch
+# ============================================================
+
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: simple-artifact-
+spec:
+  entrypoint: main
+
+  templates:
+    - name: main
+      steps:
+        # Step 1: Generate a file
+        - - name: generate-data
+            template: data-producer
+
+        # Step 2: Process the file from Step 1
+        - - name: process-data
+            template: data-processor
+            arguments:
+              artifacts:
+                - name: input-file
+                  from: "{{steps.generate-data.outputs.artifacts.output-file}}"
+
+        # Step 3: Generate a report
+        - - name: final-report
+            template: report-generator
+            arguments:
+              artifacts:
+                - name: processed-data
+                  from: "{{steps.process-data.outputs.artifacts.processed-file}}"
+
+    # Template that produces an artifact
+    - name: data-producer
+      container:
+        image: alpine:latest
+        command: [sh, -c]
+        args:
+          - |
+            echo "Generating data file..."
+
+            # Create a data file
+            cat > /tmp/data.csv << EOF
+            id,name,value
+            1,apple,100
+            2,banana,200
+            3,cherry,300
+            4,date,400
+            5,elderberry,500
+            EOF
+
+            echo "Data file created:"
+            cat /tmp/data.csv
+
+      outputs:
+        artifacts:
+          - name: output-file
+            path: /tmp/data.csv
+
+    # Template that processes an artifact
+    - name: data-processor
+      inputs:
+        artifacts:
+          - name: input-file
+            path: /tmp/input.csv
+      container:
+        image: python:3.9-alpine
+        command: [python, -c]
+        args:
+          - |
+            import csv
+
+            print("Processing data file...")
+            print("=" * 40)
+
+            # Read the input file
+            total = 0
+            rows = []
+            with open('/tmp/input.csv', 'r') as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    print(f"Processing: {row['name']} = {row['value']}")
+                    total += int(row['value'])
+                    row['doubled'] = int(row['value']) * 2
+                    rows.append(row)
+
+            print("=" * 40)
+            print(f"Total: {total}")
+
+            # Write processed file
+            with open('/tmp/processed.csv', 'w') as f:
+                writer = csv.DictWriter(f, fieldnames=['id', 'name', 'value', 'doubled'])
+                writer.writeheader()
+                writer.writerows(rows)
+
+            # Write summary
+            with open('/tmp/summary.txt', 'w') as f:
+                f.write(f"Records processed: {len(rows)}\n")
+                f.write(f"Total value: {total}\n")
+
+            print("Processing complete!")
+
+      outputs:
+        artifacts:
+          - name: processed-file
+            path: /tmp/processed.csv
+          - name: summary
+            path: /tmp/summary.txt
+
+    # Template that generates final report
+    - name: report-generator
+      inputs:
+        artifacts:
+          - name: processed-data
+            path: /tmp/data.csv
+      container:
+        image: alpine:latest
+        command: [sh, -c]
+        args:
+          - |
+            echo "============================================"
+            echo "           FINAL REPORT                     "
+            echo "============================================"
+            echo ""
+            echo "Processed Data:"
+            cat /tmp/data.csv
+            echo ""
+            echo "============================================"
+            echo "Pipeline completed successfully!"
+
+# ============================================================
+# ARTIFACT FLOW:
+#
+#  ┌─────────────────────┐
+#  │   data-producer     │
+#  │                     │
+#  │  Creates:           │
+#  │  /tmp/data.csv      │
+#  │                     │
+#  │  outputs.artifacts: │
+#  │  - output-file ─────┼───────┐
+#  └─────────────────────┘       │
+#                                │
+#                                ▼
+#  ┌─────────────────────┐       │
+#  │   data-processor    │       │
+#  │                     │       │
+#  │  inputs.artifacts:  │       │
+#  │  - input-file ◄─────┼───────┘
+#  │    → /tmp/input.csv │
+#  │                     │
+#  │  outputs.artifacts: │
+#  │  - processed-file ──┼───────┐
+#  └─────────────────────┘       │
+#                                │
+#                                ▼
+#  ┌─────────────────────┐       │
+#  │  report-generator   │       │
+#  │                     │       │
+#  │  inputs.artifacts:  │       │
+#  │  - processed-data ◄─┼───────┘
+#  │    → /tmp/data.csv  │
+#  └─────────────────────┘
+#
+# ============================================================

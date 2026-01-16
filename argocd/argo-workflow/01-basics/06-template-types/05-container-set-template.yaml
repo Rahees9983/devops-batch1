@@ -1,0 +1,261 @@
+# ============================================================
+# Container Set Template - Multiple Containers in One Pod
+# ============================================================
+# Runs multiple containers in a single pod
+# Containers share: network, volumes, lifecycle
+#
+# Run: argo submit -n argo 05-container-set-template.yaml --watch
+# ============================================================
+
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: container-set-
+spec:
+  entrypoint: main
+  serviceAccountName: argo-workflow
+
+  templates:
+    - name: main
+      steps:
+        - - name: sidecar-pattern
+            template: sidecar-example
+        - - name: init-pattern
+            template: init-container-example
+        - - name: parallel-containers
+            template: parallel-example
+
+    # ============================================================
+    # Sidecar Pattern - Main app with helper container
+    # ============================================================
+    - name: sidecar-example
+      containerSet:
+        containers:
+          # Main application
+          - name: main
+            image: alpine:latest
+            command: [sh, -c]
+            args:
+              - |
+                echo "============================================"
+                echo "  CONTAINER SET - Sidecar Pattern"
+                echo "============================================"
+                echo "Main container starting..."
+                echo "Waiting for sidecar to prepare data..."
+                sleep 3
+
+                echo ""
+                echo "Reading data from shared volume:"
+                cat /shared/data.txt
+
+                echo ""
+                echo "Main container processing complete!"
+                echo "============================================"
+            volumeMounts:
+              - name: shared-data
+                mountPath: /shared
+
+          # Sidecar - Data preparation
+          - name: sidecar
+            image: alpine:latest
+            command: [sh, -c]
+            args:
+              - |
+                echo "Sidecar: Preparing data..."
+                echo "Generated at: $(date)" > /shared/data.txt
+                echo "Hostname: $(hostname)" >> /shared/data.txt
+                echo "Message: Hello from sidecar!" >> /shared/data.txt
+                echo "Sidecar: Data preparation complete!"
+            volumeMounts:
+              - name: shared-data
+                mountPath: /shared
+
+        # Shared volume
+        volumes:
+          - name: shared-data
+            emptyDir: {}
+
+    # ============================================================
+    # Init Container Pattern - Sequential initialization
+    # ============================================================
+    - name: init-container-example
+      containerSet:
+        containers:
+          # Init 1: Download dependencies
+          - name: init-download
+            image: alpine:latest
+            command: [sh, -c]
+            args:
+              - |
+                echo "Init 1: Downloading dependencies..."
+                echo "dep-v1.0.0" > /workspace/deps.txt
+                sleep 2
+                echo "Init 1: Complete!"
+            volumeMounts:
+              - name: workspace
+                mountPath: /workspace
+
+          # Init 2: Configure environment
+          - name: init-config
+            image: alpine:latest
+            command: [sh, -c]
+            dependencies:
+              - init-download  # Wait for init-download
+            args:
+              - |
+                echo "Init 2: Configuring environment..."
+                cat /workspace/deps.txt
+                echo "config=production" >> /workspace/config.txt
+                sleep 1
+                echo "Init 2: Complete!"
+            volumeMounts:
+              - name: workspace
+                mountPath: /workspace
+
+          # Main: Run application
+          - name: main
+            image: alpine:latest
+            command: [sh, -c]
+            dependencies:
+              - init-config  # Wait for init-config
+            args:
+              - |
+                echo "============================================"
+                echo "  CONTAINER SET - Init Pattern"
+                echo "============================================"
+                echo "Main: Starting application..."
+                echo ""
+                echo "Dependencies:"
+                cat /workspace/deps.txt
+                echo ""
+                echo "Configuration:"
+                cat /workspace/config.txt
+                echo ""
+                echo "Application running!"
+                echo "============================================"
+            volumeMounts:
+              - name: workspace
+                mountPath: /workspace
+
+        volumes:
+          - name: workspace
+            emptyDir: {}
+
+    # ============================================================
+    # Parallel Processing Pattern
+    # ============================================================
+    - name: parallel-example
+      containerSet:
+        containers:
+          # Worker 1
+          - name: worker-1
+            image: alpine:latest
+            command: [sh, -c]
+            args:
+              - |
+                echo "Worker 1: Processing batch A..."
+                sleep 2
+                echo "result-A" > /results/worker-1.txt
+                echo "Worker 1: Complete!"
+            volumeMounts:
+              - name: results
+                mountPath: /results
+
+          # Worker 2
+          - name: worker-2
+            image: alpine:latest
+            command: [sh, -c]
+            args:
+              - |
+                echo "Worker 2: Processing batch B..."
+                sleep 3
+                echo "result-B" > /results/worker-2.txt
+                echo "Worker 2: Complete!"
+            volumeMounts:
+              - name: results
+                mountPath: /results
+
+          # Worker 3
+          - name: worker-3
+            image: alpine:latest
+            command: [sh, -c]
+            args:
+              - |
+                echo "Worker 3: Processing batch C..."
+                sleep 2
+                echo "result-C" > /results/worker-3.txt
+                echo "Worker 3: Complete!"
+            volumeMounts:
+              - name: results
+                mountPath: /results
+
+          # Aggregator - waits for all workers
+          - name: aggregator
+            image: alpine:latest
+            command: [sh, -c]
+            dependencies:
+              - worker-1
+              - worker-2
+              - worker-3
+            args:
+              - |
+                echo "============================================"
+                echo "  CONTAINER SET - Parallel Processing"
+                echo "============================================"
+                echo "Aggregator: Combining results..."
+                echo ""
+                echo "Results from workers:"
+                cat /results/worker-*.txt
+                echo ""
+                echo "All workers completed successfully!"
+                echo "============================================"
+            volumeMounts:
+              - name: results
+                mountPath: /results
+
+        volumes:
+          - name: results
+            emptyDir: {}
+
+# ============================================================
+# CONTAINER SET KEY POINTS:
+#
+# Structure:
+#   containerSet:
+#     containers:
+#       - name: container-1
+#         image: ...
+#         dependencies: []  # Optional
+#       - name: container-2
+#         dependencies: [container-1]  # Runs after container-1
+#     volumes:
+#       - name: shared-vol
+#         emptyDir: {}
+#
+# Key Features:
+#   - All containers run in ONE pod
+#   - Shared network namespace (localhost communication)
+#   - Shared volumes between containers
+#   - Dependency ordering with 'dependencies' field
+#
+# Dependencies:
+#   - dependencies: [] or omitted = starts immediately
+#   - dependencies: [other] = waits for 'other' to complete
+#   - Multiple dependencies = waits for ALL to complete
+#
+# WHEN TO USE:
+#   - Sidecar patterns (main + helper)
+#   - Init container sequences
+#   - Parallel processing with aggregation
+#   - Tight container coupling (shared state)
+#
+# VS STEPS/DAG:
+#   Steps/DAG: Each step = separate pod
+#   ContainerSet: All containers = same pod
+#
+#   Use ContainerSet when:
+#   - Containers need shared volumes
+#   - Low-latency communication needed
+#   - Tight resource sharing required
+#
+# ============================================================

@@ -1,0 +1,287 @@
+# ============================================================
+# Steps Template Invocator - Sequential/Parallel Orchestration
+# ============================================================
+# Orchestrates templates in sequential and parallel execution
+# Array of arrays: outer = sequential, inner = parallel
+#
+# Run: argo submit -n argo 07-steps-invocator.yaml --watch
+# ============================================================
+
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: steps-invocator-
+spec:
+  entrypoint: main
+  serviceAccountName: argo-workflow
+
+  templates:
+    # ============================================================
+    # Main Steps Template
+    # ============================================================
+    - name: main
+      steps:
+        # Step 1: Single task (sequential)
+        - - name: step-1
+            template: task
+            arguments:
+              parameters:
+                - name: message
+                  value: "Step 1: Initialize"
+
+        # Step 2: Three parallel tasks
+        - - name: step-2a
+            template: task
+            arguments:
+              parameters:
+                - name: message
+                  value: "Step 2A: Process Batch A"
+          - name: step-2b
+            template: task
+            arguments:
+              parameters:
+                - name: message
+                  value: "Step 2B: Process Batch B"
+          - name: step-2c
+            template: task
+            arguments:
+              parameters:
+                - name: message
+                  value: "Step 2C: Process Batch C"
+
+        # Step 3: Single task (waits for all of Step 2)
+        - - name: step-3
+            template: task
+            arguments:
+              parameters:
+                - name: message
+                  value: "Step 3: Aggregate Results"
+
+        # Step 4: Two parallel tasks
+        - - name: step-4a
+            template: task
+            arguments:
+              parameters:
+                - name: message
+                  value: "Step 4A: Deploy to Region A"
+          - name: step-4b
+            template: task
+            arguments:
+              parameters:
+                - name: message
+                  value: "Step 4B: Deploy to Region B"
+
+        # Step 5: Final step
+        - - name: step-5
+            template: task
+            arguments:
+              parameters:
+                - name: message
+                  value: "Step 5: Complete!"
+
+    # ============================================================
+    # Task Template
+    # ============================================================
+    - name: task
+      inputs:
+        parameters:
+          - name: message
+      container:
+        image: alpine:latest
+        command: [sh, -c]
+        args:
+          - |
+            echo "============================================"
+            echo "{{inputs.parameters.message}}"
+            echo "============================================"
+            sleep 2
+
+---
+# ============================================================
+# Steps with Conditionals (when)
+# ============================================================
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: steps-conditional-
+spec:
+  entrypoint: main
+  serviceAccountName: argo-workflow
+
+  arguments:
+    parameters:
+      - name: environment
+        value: "production"  # Change to "development" to see different path
+
+  templates:
+    - name: main
+      steps:
+        - - name: build
+            template: build-step
+
+        - - name: test
+            template: test-step
+
+        # Conditional: Only run in production
+        - - name: staging-deploy
+            template: deploy-step
+            arguments:
+              parameters:
+                - name: env
+                  value: "staging"
+            when: "{{workflow.parameters.environment}} == 'production'"
+
+        # Another conditional
+        - - name: prod-deploy
+            template: deploy-step
+            arguments:
+              parameters:
+                - name: env
+                  value: "production"
+            when: "{{workflow.parameters.environment}} == 'production'"
+
+          # This runs for development
+          - name: dev-deploy
+            template: deploy-step
+            arguments:
+              parameters:
+                - name: env
+                  value: "development"
+            when: "{{workflow.parameters.environment}} == 'development'"
+
+    - name: build-step
+      container:
+        image: alpine:latest
+        command: [echo, "Building application..."]
+
+    - name: test-step
+      container:
+        image: alpine:latest
+        command: [echo, "Running tests..."]
+
+    - name: deploy-step
+      inputs:
+        parameters:
+          - name: env
+      container:
+        image: alpine:latest
+        command: [sh, -c]
+        args:
+          - echo "Deploying to {{inputs.parameters.env}}..."
+
+---
+# ============================================================
+# Steps with Loops (withItems)
+# ============================================================
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: steps-loop-
+spec:
+  entrypoint: main
+  serviceAccountName: argo-workflow
+
+  templates:
+    - name: main
+      steps:
+        # Loop over items - each runs in parallel
+        - - name: process-item
+            template: process
+            arguments:
+              parameters:
+                - name: item
+                  value: "{{item}}"
+            withItems:
+              - "item-1"
+              - "item-2"
+              - "item-3"
+
+        # Loop with objects
+        - - name: deploy-service
+            template: deploy
+            arguments:
+              parameters:
+                - name: name
+                  value: "{{item.name}}"
+                - name: port
+                  value: "{{item.port}}"
+            withItems:
+              - { name: "api", port: "8080" }
+              - { name: "web", port: "3000" }
+              - { name: "db", port: "5432" }
+
+    - name: process
+      inputs:
+        parameters:
+          - name: item
+      container:
+        image: alpine:latest
+        command: [sh, -c]
+        args:
+          - |
+            echo "Processing: {{inputs.parameters.item}}"
+            sleep 1
+
+    - name: deploy
+      inputs:
+        parameters:
+          - name: name
+          - name: port
+      container:
+        image: alpine:latest
+        command: [sh, -c]
+        args:
+          - |
+            echo "Deploying {{inputs.parameters.name}} on port {{inputs.parameters.port}}"
+
+# ============================================================
+# STEPS TEMPLATE KEY POINTS:
+#
+# Structure:
+#   steps:
+#     - - name: step-1      # Sequential (runs first)
+#         template: task-a
+#
+#     - - name: step-2a     # Parallel (all run together)
+#         template: task-b
+#       - name: step-2b     # Same level = parallel
+#         template: task-c
+#
+#     - - name: step-3      # Sequential (waits for step-2)
+#         template: task-d
+#
+# Execution Pattern:
+#   - Outer array = sequential execution
+#   - Inner array = parallel execution
+#
+#   step-1 (sequential)
+#      ↓
+#   step-2a ─┬─ step-2b ─┬─ step-2c (parallel)
+#            │           │
+#            └─────┬─────┘
+#                  ↓
+#   step-3 (waits for all of step-2)
+#
+# Conditionals:
+#   when: "{{workflow.parameters.env}} == 'prod'"
+#   when: "{{steps.check.outputs.result}} == 'true'"
+#
+# Loops:
+#   withItems: ["a", "b", "c"]
+#   withParam: "{{steps.generate.outputs.result}}"
+#   withSequence: { count: "5", start: "1" }
+#
+# WHEN TO USE STEPS:
+#   - Simple linear pipelines
+#   - Clear sequential + parallel patterns
+#   - When execution order is obvious
+#   - Easier to read for simple workflows
+#
+# STEPS VS DAG:
+#   Steps: Array-based, implicit ordering
+#   DAG: Dependency-based, explicit relationships
+#
+#   Use Steps when: Order is clear, simple flow
+#   Use DAG when: Complex dependencies, diamond patterns
+#
+# ============================================================

@@ -1,0 +1,127 @@
+# ============================================================
+# Loops in Argo Workflows
+# ============================================================
+# This workflow demonstrates different ways to loop
+#
+# Run: argo submit -n argo 01-loops.yaml --watch
+# ============================================================
+
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: loops-
+spec:
+  entrypoint: main
+
+  arguments:
+    parameters:
+      # JSON array parameter for dynamic loop
+      - name: servers
+        value: '["web-1", "web-2", "web-3"]'
+
+  templates:
+    - name: main
+      steps:
+        # Example 1: Simple list loop
+        - - name: simple-loop
+            template: print-item
+            arguments:
+              parameters:
+                - name: fruit
+                  value: "{{item}}"
+            withItems:
+              - apple
+              - banana
+              - cherry
+              - date
+
+        # Example 2: Loop with JSON objects
+        - - name: object-loop
+            template: deploy-service
+            arguments:
+              parameters:
+                - name: service-name
+                  value: "{{item.name}}"
+                - name: port
+                  value: "{{item.port}}"
+                - name: replicas
+                  value: "{{item.replicas}}"
+            withItems:
+              - { name: "frontend", port: "80", replicas: "3" }
+              - { name: "backend", port: "8080", replicas: "2" }
+              - { name: "database", port: "5432", replicas: "1" }
+
+        # Example 3: Loop with parameter (dynamic)
+        - - name: dynamic-loop
+            template: ping-server
+            arguments:
+              parameters:
+                - name: server
+                  value: "{{item}}"
+            withParam: "{{workflow.parameters.servers}}"
+
+    # Template for simple loop
+    - name: print-item
+      inputs:
+        parameters:
+          - name: fruit
+      container:
+        image: alpine:latest
+        command: [echo]
+        args: ["Processing fruit: {{inputs.parameters.fruit}}"]
+
+    # Template for object loop
+    - name: deploy-service
+      inputs:
+        parameters:
+          - name: service-name
+          - name: port
+          - name: replicas
+      container:
+        image: alpine:latest
+        command: [sh, -c]
+        args:
+          - |
+            echo "=== Deploying Service ==="
+            echo "Name: {{inputs.parameters.service-name}}"
+            echo "Port: {{inputs.parameters.port}}"
+            echo "Replicas: {{inputs.parameters.replicas}}"
+            echo "========================="
+
+    # Template for dynamic loop
+    - name: ping-server
+      inputs:
+        parameters:
+          - name: server
+      container:
+        image: alpine:latest
+        command: [sh, -c]
+        args:
+          - |
+            echo "Pinging server: {{inputs.parameters.server}}"
+            sleep 1
+            echo "Server {{inputs.parameters.server}} is reachable!"
+
+# ============================================================
+# LOOP EXECUTION:
+#
+# Simple Loop (Sequential by default):
+#   ┌─────────┐  ┌─────────┐  ┌─────────┐  ┌─────────┐
+#   │  apple  │──│ banana  │──│ cherry  │──│  date   │
+#   └─────────┘  └─────────┘  └─────────┘  └─────────┘
+#
+# Object Loop (Parallel):
+#   ┌───────────────┐
+#   │   frontend    │
+#   │   port: 80    │
+#   └───────────────┘
+#   ┌───────────────┐
+#   │   backend     │  (all run in parallel)
+#   │   port: 8080  │
+#   └───────────────┘
+#   ┌───────────────┐
+#   │   database    │
+#   │   port: 5432  │
+#   └───────────────┘
+#
+# ============================================================
