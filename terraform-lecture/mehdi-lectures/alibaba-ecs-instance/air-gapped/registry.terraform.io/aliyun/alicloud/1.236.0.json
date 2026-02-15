@@ -1,0 +1,10 @@
+{
+  "archives": {
+    "darwin_arm64": {
+      "hashes": [
+        "h1:C0i6Q8cdsarUEixVK0mHk7AgEFQCgrP3yCvwDlSqoEM="
+      ],
+      "url": "terraform-provider-alicloud_1.236.0_darwin_arm64.zip"
+    }
+  }
+}

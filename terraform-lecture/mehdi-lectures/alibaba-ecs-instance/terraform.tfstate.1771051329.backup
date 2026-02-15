@@ -1,0 +1,60 @@
+{
+  "version": 4,
+  "terraform_version": "1.11.4",
+  "serial": 12,
+  "lineage": "c754f5ae-c3e0-c0db-3e27-40a6b49474e6",
+  "outputs": {
+    "random_string_id": {
+      "value": "xzj!5Tp*",
+      "type": "string"
+    },
+    "random_string_result": {
+      "value": "xzj!5Tp*",
+      "type": "string",
+      "sensitive": true
+    }
+  },
+  "resources": [
+    {
+      "mode": "managed",
+      "type": "random_string",
+      "name": "example",
+      "provider": "provider[\"registry.terraform.io/hashicorp/random\"]",
+      "instances": [
+        {
+          "schema_version": 2,
+          "attributes": {
+            "id": "xzj!5Tp*",
+            "keepers": null,
+            "length": 8,
+            "lower": true,
+            "min_lower": 0,
+            "min_numeric": 0,
+            "min_special": 0,
+            "min_upper": 0,
+            "number": true,
+            "numeric": true,
+            "override_special": null,
+            "result": "xzj!5Tp*",
+            "special": true,
+            "upper": true
+          },
+          "sensitive_attributes": []
+        }
+      ]
+    }
+  ],
+  "check_results": [
+    {
+      "object_kind": "var",
+      "config_addr": "var.length",
+      "status": "pass",
+      "objects": [
+        {
+          "object_addr": "var.length",
+          "status": "pass"
+        }
+      ]
+    }
+  ]
+}

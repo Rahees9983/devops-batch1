@@ -1,0 +1,10 @@
+{
+  "archives": {
+    "darwin_arm64": {
+      "hashes": [
+        "h1:KG4NuIBl1mRWU0KD/BGfCi1YN/j3F7H4YgeeM7iSdNs="
+      ],
+      "url": "terraform-provider-random_3.7.2_darwin_arm64.zip"
+    }
+  }
+}
