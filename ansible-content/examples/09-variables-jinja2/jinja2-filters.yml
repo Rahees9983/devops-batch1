@@ -1,0 +1,257 @@
+---
+# Jinja2 Filters and Template Examples
+
+- name: Jinja2 Filters Demonstration
+  hosts: localhost
+  gather_facts: yes
+
+  vars:
+    name: "john doe"
+    sentence: "  hello world  "
+    number: 42
+    float_num: 3.14159
+    items: ["apple", "banana", "cherry", "date"]
+    numbers: [1, 5, 3, 9, 2, 8]
+    mixed_list: ["a", "b", "a", "c", "b", "a"]
+
+    users_dict:
+      john: {age: 30, role: admin}
+      jane: {age: 25, role: developer}
+      bob: {age: 35, role: viewer}
+
+    json_string: '{"name": "test", "value": 123}'
+    yaml_string: |
+      name: test
+      value: 123
+
+    file_path: "/var/log/nginx/access.log"
+    url: "https://user:pass@example.com:8080/path?query=value"
+
+  tasks:
+    #=============================================
+    # STRING FILTERS
+    #=============================================
+    - name: String manipulation filters
+      debug:
+        msg: |
+          Original: "{{ name }}"
+          Upper: "{{ name | upper }}"
+          Lower: "{{ name | lower }}"
+          Capitalize: "{{ name | capitalize }}"
+          Title: "{{ name | title }}"
+          Replace: "{{ name | replace('john', 'jane') }}"
+          Trim: "{{ sentence | trim }}"
+          Length: {{ name | length }}
+          Wordcount: {{ sentence | wordcount }}
+          Center: "{{ 'hi' | center(10) }}"
+          Truncate: "{{ sentence | truncate(10) }}"
+
+    - name: String formatting
+      debug:
+        msg: |
+          Default: {{ undefined_var | default('N/A') }}
+          Format: {{ "Hello %s" | format(name) }}
+          Quote: {{ name | quote }}
+          Hash MD5: {{ name | hash('md5') }}
+          Hash SHA1: {{ name | hash('sha1') }}
+          Base64 encode: {{ name | b64encode }}
+          Base64 decode: {{ 'am9obiBkb2U=' | b64decode }}
+
+    - name: Regex filters
+      vars:
+        text: "The quick brown fox"
+        email: "user@example.com"
+      debug:
+        msg: |
+          Regex replace: {{ text | regex_replace('quick', 'slow') }}
+          Regex search: {{ email | regex_search('@(.+)$') }}
+          Regex findall: {{ text | regex_findall('\\w+') }}
+
+    #=============================================
+    # NUMERIC FILTERS
+    #=============================================
+    - name: Numeric filters
+      debug:
+        msg: |
+          Integer: {{ "42" | int }}
+          Float: {{ "3.14" | float }}
+          Absolute: {{ -5 | abs }}
+          Round: {{ float_num | round(2) }}
+          Random: {{ range(1, 100) | random }}
+          Log: {{ 100 | log }}
+          Power: {{ 2 | pow(10) }}
+          Root: {{ 16 | root }}
+
+    - name: Human readable sizes
+      vars:
+        bytes: 1073741824
+      debug:
+        msg: |
+          Bytes: {{ bytes }}
+          Human readable: {{ bytes | human_readable }}
+          Human readable (iec): {{ bytes | human_readable(isbits=False, unit='G') }}
+
+    #=============================================
+    # LIST FILTERS
+    #=============================================
+    - name: List filters
+      debug:
+        msg: |
+          First: {{ items | first }}
+          Last: {{ items | last }}
+          Length: {{ items | length }}
+          Min: {{ numbers | min }}
+          Max: {{ numbers | max }}
+          Sum: {{ numbers | sum }}
+          Sort: {{ numbers | sort }}
+          Sort reverse: {{ numbers | sort(reverse=true) }}
+          Reverse: {{ items | reverse | list }}
+          Join: {{ items | join(', ') }}
+          Unique: {{ mixed_list | unique }}
+          Flatten: {{ [[1,2], [3,4]] | flatten }}
+          Random: {{ items | random }}
+          Shuffle: {{ items | shuffle }}
+
+    - name: List selection filters
+      debug:
+        msg: |
+          Select first 2: {{ items[:2] }}
+          Select last 2: {{ items[-2:] }}
+          Slice: {{ items[1:3] }}
+          Reject 'apple': {{ items | reject('equalto', 'apple') | list }}
+          Select with 'a': {{ items | select('match', '.*a.*') | list }}
+
+    - name: List combination filters
+      vars:
+        list1: [1, 2, 3]
+        list2: [3, 4, 5]
+      debug:
+        msg: |
+          Union: {{ list1 | union(list2) }}
+          Intersect: {{ list1 | intersect(list2) }}
+          Difference: {{ list1 | difference(list2) }}
+          Symmetric diff: {{ list1 | symmetric_difference(list2) }}
+
+    #=============================================
+    # DICTIONARY FILTERS
+    #=============================================
+    - name: Dictionary filters
+      debug:
+        msg: |
+          Keys: {{ users_dict.keys() | list }}
+          Values: {{ users_dict.values() | list }}
+          Items: {{ users_dict | dict2items }}
+          Combine: {{ {'a': 1} | combine({'b': 2}) }}
+
+    - name: Select from list of dicts
+      vars:
+        users_list:
+          - {name: john, age: 30, active: true}
+          - {name: jane, age: 25, active: true}
+          - {name: bob, age: 35, active: false}
+      debug:
+        msg: |
+          Names: {{ users_list | map(attribute='name') | list }}
+          Active users: {{ users_list | selectattr('active') | list }}
+          Age > 26: {{ users_list | selectattr('age', '>', 26) | list }}
+
+    #=============================================
+    # TYPE CONVERSION FILTERS
+    #=============================================
+    - name: Type conversion
+      debug:
+        msg: |
+          To JSON: {{ users_dict | to_json }}
+          To YAML: {{ users_dict | to_yaml }}
+          To nice JSON: {{ users_dict | to_nice_json }}
+          To nice YAML: {{ users_dict | to_nice_yaml }}
+          From JSON: {{ json_string | from_json }}
+          From YAML: {{ yaml_string | from_yaml }}
+          Bool: {{ "yes" | bool }}
+          Bool: {{ "no" | bool }}
+          Bool: {{ 1 | bool }}
+
+    #=============================================
+    # PATH FILTERS
+    #=============================================
+    - name: Path manipulation
+      debug:
+        msg: |
+          Basename: {{ file_path | basename }}
+          Dirname: {{ file_path | dirname }}
+          Expanduser: {{ '~/.ssh' | expanduser }}
+          Realpath: {{ '.' | realpath }}
+          Splitext: {{ file_path | splitext }}
+          Win basename: {{ 'C:\\Users\\test' | win_basename }}
+
+    #=============================================
+    # URL FILTERS
+    #=============================================
+    - name: URL manipulation
+      debug:
+        msg: |
+          URL split: {{ url | urlsplit }}
+          URL host: {{ url | urlsplit('hostname') }}
+          URL path: {{ url | urlsplit('path') }}
+          URL scheme: {{ url | urlsplit('scheme') }}
+          URL encode: {{ "hello world" | urlencode }}
+
+    #=============================================
+    # NETWORKING FILTERS
+    #=============================================
+    - name: Network filters
+      vars:
+        ip: "192.168.1.100"
+        cidr: "192.168.1.0/24"
+      debug:
+        msg: |
+          IP address: {{ ip | ansible.utils.ipaddr }}
+          Is IP: {{ ip | ansible.utils.ipaddr('bool') }}
+          Network: {{ cidr | ansible.utils.ipaddr('network') }}
+          Netmask: {{ cidr | ansible.utils.ipaddr('netmask') }}
+      when: false  # Requires ansible.utils collection
+
+    #=============================================
+    # PASSWORD FILTERS
+    #=============================================
+    - name: Password hash
+      vars:
+        password: "mysecretpassword"
+      debug:
+        msg: |
+          SHA512: {{ password | password_hash('sha512') }}
+          SHA256: {{ password | password_hash('sha256') }}
+
+    #=============================================
+    # CONDITIONAL FILTERS
+    #=============================================
+    - name: Conditional filters
+      vars:
+        maybe_undefined: null
+        maybe_list: []
+      debug:
+        msg: |
+          Default if undefined: {{ undefined_var | default('fallback') }}
+          Default if empty: {{ maybe_list | default(['item'], true) }}
+          Mandatory: {{ name | mandatory }}
+          Ternary: {{ true | ternary('yes', 'no') }}
+
+    #=============================================
+    # TESTING FILTERS
+    #=============================================
+    - name: Test filters (return boolean)
+      vars:
+        test_string: "hello"
+        test_number: 42
+        test_list: [1, 2, 3]
+      debug:
+        msg: |
+          Is defined: {{ test_string is defined }}
+          Is undefined: {{ undefined_var is undefined }}
+          Is string: {{ test_string is string }}
+          Is number: {{ test_number is number }}
+          Is iterable: {{ test_list is iterable }}
+          Is mapping: {{ users_dict is mapping }}
+          Contains: {{ 2 in test_list }}
+          Starts with: {{ test_string is match('hel.*') }}
+          Search: {{ test_string is search('ell') }}

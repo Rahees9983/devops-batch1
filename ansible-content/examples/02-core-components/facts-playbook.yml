@@ -1,0 +1,125 @@
+---
+# Facts Gathering and Usage Examples
+
+- name: Working with Ansible Facts
+  hosts: all
+  gather_facts: yes
+
+  tasks:
+    # Display basic system information
+    - name: Show system information
+      debug:
+        msg: |
+          Hostname: {{ ansible_hostname }}
+          FQDN: {{ ansible_fqdn }}
+          OS Family: {{ ansible_os_family }}
+          Distribution: {{ ansible_distribution }} {{ ansible_distribution_version }}
+          Kernel: {{ ansible_kernel }}
+          Architecture: {{ ansible_architecture }}
+
+    # Display network information
+    - name: Show network information
+      debug:
+        msg: |
+          Primary IP: {{ ansible_default_ipv4.address | default('N/A') }}
+          Gateway: {{ ansible_default_ipv4.gateway | default('N/A') }}
+          Interface: {{ ansible_default_ipv4.interface | default('N/A') }}
+          MAC Address: {{ ansible_default_ipv4.macaddress | default('N/A') }}
+
+    # Display hardware information
+    - name: Show hardware information
+      debug:
+        msg: |
+          CPU Cores: {{ ansible_processor_cores }}
+          vCPUs: {{ ansible_processor_vcpus }}
+          Total Memory: {{ ansible_memtotal_mb }} MB
+          Free Memory: {{ ansible_memfree_mb }} MB
+          Swap Total: {{ ansible_swaptotal_mb }} MB
+
+    # Display disk information
+    - name: Show disk mounts
+      debug:
+        msg: "Mount: {{ item.mount }} - Size: {{ item.size_total | human_readable }} - Available: {{ item.size_available | human_readable }}"
+      loop: "{{ ansible_mounts }}"
+      when: item.mount in ['/', '/home', '/var']
+
+    # Conditional task based on facts
+    - name: Install package on RedHat systems
+      debug:
+        msg: "Would install httpd using yum/dnf"
+      when: ansible_os_family == "RedHat"
+
+    - name: Install package on Debian systems
+      debug:
+        msg: "Would install apache2 using apt"
+      when: ansible_os_family == "Debian"
+
+    # Using facts in variables
+    - name: Create system info file
+      copy:
+        content: |
+          System Information Report
+          ========================
+          Generated: {{ ansible_date_time.iso8601 }}
+
+          Hostname: {{ ansible_hostname }}
+          Domain: {{ ansible_domain | default('N/A') }}
+          OS: {{ ansible_distribution }} {{ ansible_distribution_version }}
+          Kernel: {{ ansible_kernel }}
+
+          Hardware:
+          - CPUs: {{ ansible_processor_vcpus }}
+          - Memory: {{ ansible_memtotal_mb }} MB
+          - Architecture: {{ ansible_architecture }}
+
+          Network:
+          - IP Address: {{ ansible_default_ipv4.address | default('N/A') }}
+          - Interface: {{ ansible_default_ipv4.interface | default('N/A') }}
+        dest: /tmp/system-info.txt
+        mode: '0644'
+
+---
+# Playbook to disable fact gathering (faster execution)
+- name: Playbook without facts
+  hosts: all
+  gather_facts: no
+
+  tasks:
+    - name: Run quick task
+      command: uptime
+      register: uptime_result
+
+    - name: Show uptime
+      debug:
+        var: uptime_result.stdout
+
+---
+# Custom facts example
+- name: Working with custom facts
+  hosts: all
+  gather_facts: yes
+
+  tasks:
+    - name: Create custom facts directory
+      file:
+        path: /etc/ansible/facts.d
+        state: directory
+        mode: '0755'
+      become: yes
+
+    - name: Deploy custom fact script
+      copy:
+        content: |
+          #!/bin/bash
+          # Custom fact script - returns JSON
+          echo '{"custom_app": {"version": "1.2.3", "status": "running"}}'
+        dest: /etc/ansible/facts.d/custom_app.fact
+        mode: '0755'
+      become: yes
+
+    - name: Re-gather facts to include custom facts
+      setup:
+
+    - name: Display custom fact
+      debug:
+        msg: "App Version: {{ ansible_local.custom_app.custom_app.version | default('Not found') }}"

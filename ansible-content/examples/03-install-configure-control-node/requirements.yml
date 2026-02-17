@@ -1,0 +1,45 @@
+---
+# Ansible Galaxy Requirements File
+# Install with: ansible-galaxy install -r requirements.yml
+
+collections:
+  # Core Ansible collections
+  - name: ansible.posix
+    version: ">=1.5.0"
+  - name: ansible.utils
+    version: ">=2.10.0"
+
+  # Community collections
+  - name: community.general
+    version: ">=7.0.0"
+  - name: community.mysql
+    version: ">=3.7.0"
+  - name: community.postgresql
+    version: ">=3.0.0"
+  - name: community.docker
+    version: ">=3.4.0"
+  - name: community.crypto
+    version: ">=2.15.0"
+
+  # Cloud providers
+  - name: amazon.aws
+    version: ">=6.0.0"
+  - name: azure.azcollection
+    version: ">=1.18.0"
+  - name: google.cloud
+    version: ">=1.2.0"
+
+  # Kubernetes
+  - name: kubernetes.core
+    version: ">=2.4.0"
+
+roles:
+  # Popular community roles
+  - name: geerlingguy.docker
+    version: "6.1.0"
+  - name: geerlingguy.nginx
+    version: "3.1.0"
+  - name: geerlingguy.mysql
+    version: "4.3.0"
+  - name: geerlingguy.java
+    version: "2.1.0"

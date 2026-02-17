@@ -1,0 +1,95 @@
+---
+# GCP Compute Dynamic Inventory Configuration
+# Requires: google.cloud collection
+# Install: ansible-galaxy collection install google.cloud
+
+plugin: google.cloud.gcp_compute
+
+# GCP Projects
+projects:
+  - my-gcp-project-id
+  - another-project-id
+
+# Zones to query (optional - omit for all zones)
+zones:
+  - us-central1-a
+  - us-central1-b
+  - us-east1-b
+
+# Or specify regions (all zones in regions)
+# regions:
+#   - us-central1
+#   - us-east1
+
+# Authentication
+# Uses Application Default Credentials by default
+# Or specify service account file
+# service_account_file: /path/to/service-account.json
+# service_account_contents: "{{ lookup('file', '/path/to/service-account.json') }}"
+
+# Filters
+filters:
+  - status = RUNNING
+  # - labels.environment = production
+  # - name = web-*
+
+# Hostnames
+hostnames:
+  # Priority order
+  - name
+  - public_ip
+  - private_ip
+
+# Compose variables
+compose:
+  ansible_host: networkInterfaces[0].accessConfigs[0].natIP | default(networkInterfaces[0].networkIP, true)
+  ansible_user: labels.ansible_user | default('ansible')
+  gcp_zone: zone | basename
+  gcp_machine_type: machineType | basename
+  gcp_project: project | basename
+
+# Create groups from attributes
+keyed_groups:
+  # Group by zone
+  - key: zone | basename
+    prefix: zone
+
+  # Group by region (extract from zone)
+  - key: zone | basename | regex_replace('-[a-z]$', '')
+    prefix: region
+
+  # Group by machine type
+  - key: machineType | basename
+    prefix: type
+
+  # Group by labels
+  - key: labels.environment | default('unlabeled')
+    prefix: env
+
+  - key: labels.role | default('unknown')
+    prefix: role
+
+  - key: labels.application | default('unknown')
+    prefix: app
+
+  # Group by network tags
+  - key: tags.items | default([])
+    prefix: nettag
+
+# Static groups
+groups:
+  # All instances with external IP
+  public: "networkInterfaces[0].accessConfigs is defined"
+
+  # Preemptible instances
+  preemptible: "scheduling.preemptible | default(false)"
+
+# Use cache
+cache: true
+cache_plugin: jsonfile
+cache_timeout: 300
+cache_connection: /tmp/gcp_compute_inventory_cache
+cache_prefix: gcp_compute
+
+# Retrieve all fields (may be slower)
+retrieve_image_info: false

@@ -1,0 +1,196 @@
+---
+# Archive Management Module Examples
+
+#=============================================
+# ARCHIVE MODULE (Create Archives)
+#=============================================
+- name: Archive Module Examples
+  hosts: all
+  become: yes
+
+  tasks:
+    # Create tar.gz archive
+    - name: Create tar.gz archive
+      archive:
+        path: /var/log/myapp
+        dest: /backup/myapp-logs.tar.gz
+        format: gz
+
+    # Create zip archive
+    - name: Create zip archive
+      archive:
+        path: /opt/myapp/data
+        dest: /backup/myapp-data.zip
+        format: zip
+
+    # Create archive of multiple paths
+    - name: Archive multiple directories
+      archive:
+        path:
+          - /etc/myapp
+          - /var/lib/myapp
+          - /opt/myapp/config
+        dest: /backup/myapp-full-backup.tar.gz
+        format: gz
+
+    # Create bz2 archive
+    - name: Create bz2 archive
+      archive:
+        path: /var/log
+        dest: /backup/logs.tar.bz2
+        format: bz2
+        exclude_path:
+          - /var/log/journal
+          - /var/log/audit
+
+    # Archive with exclusions
+    - name: Archive excluding patterns
+      archive:
+        path: /opt/myapp
+        dest: /backup/myapp-code.tar.gz
+        format: gz
+        exclude_path:
+          - /opt/myapp/node_modules
+          - /opt/myapp/.git
+          - /opt/myapp/tmp
+
+    # Archive single file
+    - name: Compress single file
+      archive:
+        path: /var/log/myapp/app.log
+        dest: /backup/app.log.gz
+        format: gz
+        remove: no  # Keep original
+
+    # Archive and remove source
+    - name: Archive and remove original
+      archive:
+        path: /tmp/old-data
+        dest: /backup/old-data.tar.gz
+        format: gz
+        remove: yes
+      when: false  # Be careful with remove: yes
+
+#=============================================
+# UNARCHIVE MODULE (Extract Archives)
+#=============================================
+- name: Unarchive Module Examples
+  hosts: all
+  become: yes
+
+  tasks:
+    # Extract from control node
+    - name: Extract archive from control node
+      unarchive:
+        src: files/app-v1.2.3.tar.gz
+        dest: /opt/myapp/
+        owner: root
+        group: root
+        mode: '0755'
+      when: false  # Source doesn't exist
+
+    # Extract from URL
+    - name: Download and extract
+      unarchive:
+        src: https://github.com/example/app/archive/v1.0.0.tar.gz
+        dest: /opt/
+        remote_src: yes
+      when: false  # URL doesn't exist
+
+    # Extract from remote location
+    - name: Extract archive already on remote
+      unarchive:
+        src: /backup/myapp-backup.tar.gz
+        dest: /opt/restore/
+        remote_src: yes
+
+    # Extract specific files
+    - name: Extract specific files only
+      unarchive:
+        src: /backup/myapp-backup.tar.gz
+        dest: /opt/restore/
+        remote_src: yes
+        include:
+          - 'config/*'
+          - 'data/important.db'
+      when: false  # Example only
+
+    # Extract excluding files
+    - name: Extract excluding certain files
+      unarchive:
+        src: /backup/myapp-backup.tar.gz
+        dest: /opt/restore/
+        remote_src: yes
+        exclude:
+          - 'logs/*'
+          - 'tmp/*'
+      when: false  # Example only
+
+    # Extract with ownership
+    - name: Extract with specific ownership
+      unarchive:
+        src: files/webapp.tar.gz
+        dest: /var/www/html/
+        owner: www-data
+        group: www-data
+        mode: '0755'
+      when: false  # Source doesn't exist
+
+    # Extract only if not already done
+    - name: Check if already extracted
+      stat:
+        path: /opt/myapp/VERSION
+      register: version_file
+
+    - name: Extract if not present
+      unarchive:
+        src: files/myapp.tar.gz
+        dest: /opt/myapp/
+      when: not version_file.stat.exists
+
+#=============================================
+# PRACTICAL EXAMPLE: Backup and Restore
+#=============================================
+- name: Backup and Restore Workflow
+  hosts: all
+  become: yes
+
+  vars:
+    app_name: myapp
+    backup_dir: /backup
+    app_dir: /opt/{{ app_name }}
+    backup_date: "{{ ansible_date_time.date }}"
+
+  tasks:
+    # Create backup directory
+    - name: Ensure backup directory exists
+      file:
+        path: "{{ backup_dir }}"
+        state: directory
+        mode: '0750'
+
+    # Create timestamped backup
+    - name: Create application backup
+      archive:
+        path: "{{ app_dir }}"
+        dest: "{{ backup_dir }}/{{ app_name }}-{{ backup_date }}.tar.gz"
+        format: gz
+        exclude_path:
+          - "{{ app_dir }}/logs"
+          - "{{ app_dir }}/tmp"
+
+    # Remove old backups (keep last 7)
+    - name: Find old backups
+      find:
+        paths: "{{ backup_dir }}"
+        patterns: "{{ app_name }}-*.tar.gz"
+        age: 7d
+      register: old_backups
+
+    - name: Remove old backups
+      file:
+        path: "{{ item.path }}"
+        state: absent
+      loop: "{{ old_backups.files }}"
+      loop_control:
+        label: "{{ item.path | basename }}"

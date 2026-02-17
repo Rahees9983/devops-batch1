@@ -1,0 +1,145 @@
+---
+# Example playbook demonstrating role usage
+
+#=============================================
+# BASIC ROLE USAGE
+#=============================================
+- name: Basic Role Usage
+  hosts: webservers
+  become: yes
+
+  roles:
+    - webserver
+
+#=============================================
+# ROLE WITH VARIABLES
+#=============================================
+- name: Role with Variables
+  hosts: webservers
+  become: yes
+
+  roles:
+    - role: webserver
+      vars:
+        webserver_worker_connections: 2048
+        webserver_client_max_body_size: 100M
+        webserver_vhosts:
+          - name: myapp
+            server_name: myapp.example.com
+            document_root: /var/www/myapp
+
+#=============================================
+# MULTIPLE ROLES
+#=============================================
+- name: Multiple Roles
+  hosts: appservers
+  become: yes
+
+  roles:
+    - common
+    - webserver
+    - role: database
+      vars:
+        db_name: myapp
+
+#=============================================
+# CONDITIONAL ROLES
+#=============================================
+- name: Conditional Roles
+  hosts: all
+  become: yes
+
+  roles:
+    - role: webserver
+      when: "'webservers' in group_names"
+    - role: database
+      when: "'dbservers' in group_names"
+
+#=============================================
+# ROLES WITH TAGS
+#=============================================
+- name: Roles with Tags
+  hosts: all
+  become: yes
+
+  roles:
+    - role: common
+      tags:
+        - common
+        - base
+    - role: webserver
+      tags:
+        - webserver
+        - nginx
+    - role: monitoring
+      tags:
+        - monitoring
+        - never  # Only run when explicitly tagged
+
+#=============================================
+# PRE/POST TASKS WITH ROLES
+#=============================================
+- name: Pre and Post Tasks
+  hosts: webservers
+  become: yes
+
+  pre_tasks:
+    - name: Update package cache
+      package:
+        update_cache: yes
+      changed_when: false
+
+    - name: Check disk space
+      shell: df -h /
+      register: disk_space
+      changed_when: false
+
+  roles:
+    - webserver
+
+  post_tasks:
+    - name: Verify service is running
+      service_facts:
+
+    - name: Display service status
+      debug:
+        msg: "Nginx is {{ ansible_facts.services['nginx.service'].state | default('not found') }}"
+
+#=============================================
+# DYNAMIC ROLE INCLUSION
+#=============================================
+- name: Dynamic Role Inclusion
+  hosts: all
+  become: yes
+
+  tasks:
+    - name: Include role dynamically
+      include_role:
+        name: webserver
+      vars:
+        webserver_vhosts:
+          - name: dynamic-site
+            server_name: dynamic.example.com
+
+    - name: Include role with conditions
+      include_role:
+        name: "{{ item }}"
+      loop:
+        - common
+        - webserver
+      when: install_web_stack | default(false)
+
+#=============================================
+# ROLE DEPENDENCIES EXAMPLE
+#=============================================
+# In meta/main.yml, you can define dependencies:
+#
+# dependencies:
+#   - role: common
+#   - role: firewall
+#     vars:
+#       firewall_ports:
+#         - 80
+#         - 443
+#
+# Dependencies run automatically before the role

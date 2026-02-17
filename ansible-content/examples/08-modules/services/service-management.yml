@@ -1,0 +1,196 @@
+---
+# Service Management Module Examples
+
+#=============================================
+# SERVICE MODULE (Generic)
+#=============================================
+- name: Service Management Examples
+  hosts: all
+  become: yes
+
+  tasks:
+    # Start a service
+    - name: Start nginx
+      service:
+        name: nginx
+        state: started
+
+    # Stop a service
+    - name: Stop nginx
+      service:
+        name: nginx
+        state: stopped
+
+    # Restart a service
+    - name: Restart nginx
+      service:
+        name: nginx
+        state: restarted
+
+    # Reload a service (graceful)
+    - name: Reload nginx configuration
+      service:
+        name: nginx
+        state: reloaded
+
+    # Enable service at boot
+    - name: Enable nginx at boot
+      service:
+        name: nginx
+        enabled: yes
+
+    # Start and enable service
+    - name: Start and enable nginx
+      service:
+        name: nginx
+        state: started
+        enabled: yes
+
+    # Disable service
+    - name: Disable nginx at boot
+      service:
+        name: nginx
+        enabled: no
+
+    # Check service status
+    - name: Get service status
+      service_facts:
+
+    - name: Display nginx status
+      debug:
+        msg: "Nginx state: {{ ansible_facts.services['nginx.service'].state | default('not found') }}"
+
+#=============================================
+# SYSTEMD MODULE (Linux with systemd)
+#=============================================
+- name: Systemd Service Management
+  hosts: all
+  become: yes
+
+  tasks:
+    # Start service with systemd
+    - name: Start service via systemd
+      systemd:
+        name: nginx
+        state: started
+
+    # Stop service
+    - name: Stop service via systemd
+      systemd:
+        name: nginx
+        state: stopped
+
+    # Restart with daemon-reload
+    - name: Restart service after config change
+      systemd:
+        name: nginx
+        state: restarted
+        daemon_reload: yes
+
+    # Enable at boot
+    - name: Enable service at boot
+      systemd:
+        name: nginx
+        enabled: yes
+
+    # Mask a service (prevent starting)
+    - name: Mask cups service
+      systemd:
+        name: cups
+        masked: yes
+
+    # Unmask a service
+    - name: Unmask cups service
+      systemd:
+        name: cups
+        masked: no
+
+    # Force systemd to reread configs
+    - name: Daemon reload
+      systemd:
+        daemon_reload: yes
+
+    # Daemon reexec (upgrade systemd itself)
+    - name: Daemon reexec
+      systemd:
+        daemon_reexec: yes
+      when: false  # Careful with this
+
+#=============================================
+# CREATING CUSTOM SYSTEMD SERVICE
+#=============================================
+- name: Create Custom Systemd Service
+  hosts: all
+  become: yes
+
+  vars:
+    app_name: myapp
+    app_user: appuser
+    app_dir: /opt/myapp
+
+  tasks:
+    - name: Create systemd service file
+      copy:
+        content: |
+          [Unit]
+          Description={{ app_name }} Service
+          After=network.target
+
+          [Service]
+          Type=simple
+          User={{ app_user }}
+          WorkingDirectory={{ app_dir }}
+          ExecStart={{ app_dir }}/bin/start.sh
+          ExecStop={{ app_dir }}/bin/stop.sh
+          Restart=always
+          RestartSec=5
+          Environment=NODE_ENV=production
+          StandardOutput=journal
+          StandardError=journal
+
+          [Install]
+          WantedBy=multi-user.target
+        dest: "/etc/systemd/system/{{ app_name }}.service"
+        mode: '0644'
+      notify: Reload systemd
+
+    - name: Enable and start custom service
+      systemd:
+        name: "{{ app_name }}"
+        state: started
+        enabled: yes
+        daemon_reload: yes
+      when: false  # Service doesn't actually exist
+
+  handlers:
+    - name: Reload systemd
+      systemd:
+        daemon_reload: yes
+
+#=============================================
+# SERVICE FACTS
+#=============================================
+- name: Gather and Display Service Information
+  hosts: all
+  become: yes
+
+  tasks:
+    - name: Gather service facts
+      service_facts:
+
+    - name: List all running services
+      debug:
+        msg: "{{ item.key }}: {{ item.value.state }}"
+      loop: "{{ ansible_facts.services | dict2items }}"
+      when: item.value.state == 'running'
+      loop_control:
+        label: "{{ item.key }}"
+
+    - name: Check specific services
+      debug:
+        msg: "{{ item }} is {{ ansible_facts.services[item ~ '.service'].state | default('not found') }}"
+      loop:
+        - sshd
+        - nginx
+        - httpd
+        - crond

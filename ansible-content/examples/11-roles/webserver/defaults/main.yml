@@ -1,0 +1,89 @@
+---
+# Default variables for webserver role
+# These can be overridden in playbooks, inventory, or vars files
+
+#=============================================
+# GENERAL SETTINGS
+#=============================================
+webserver_type: nginx  # nginx or apache
+
+#=============================================
+# NGINX DEFAULTS
+#=============================================
+webserver_packages:
+  - nginx
+
+webserver_additional_packages: []
+
+webserver_service_name: nginx
+webserver_user: nginx
+webserver_group: nginx
+
+#=============================================
+# PATHS
+#=============================================
+webserver_config_dir: /etc/nginx
+webserver_main_config_file: nginx.conf
+webserver_main_config_template: nginx.conf.j2
+webserver_config_validate: "nginx -t -c %s"
+
+webserver_default_document_root: /var/www/html
+webserver_log_dir: /var/log/nginx
+webserver_ssl_dir: /etc/ssl/nginx
+
+#=============================================
+# NGINX CONFIGURATION
+#=============================================
+webserver_worker_processes: auto
+webserver_worker_connections: 1024
+webserver_keepalive_timeout: 65
+webserver_client_max_body_size: 50M
+
+webserver_gzip_enabled: true
+webserver_gzip_types:
+  - text/plain
+  - text/css
+  - application/json
+  - application/javascript
+  - text/xml
+  - application/xml
+
+#=============================================
+# SSL SETTINGS
+#=============================================
+webserver_ssl_enabled: false
+webserver_ssl_protocols: "TLSv1.2 TLSv1.3"
+webserver_ssl_ciphers: "ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256"
+
+#=============================================
+# SECURITY
+#=============================================
+webserver_security_headers: true
+webserver_hide_version: true
+
+#=============================================
+# VIRTUAL HOSTS
+#=============================================
+webserver_vhosts: []
+# Example:
+# webserver_vhosts:
+#   - name: mysite
+#     server_name: mysite.example.com
+#     document_root: /var/www/mysite
+#     ssl: false
+#   - name: secure-site
+#     server_name: secure.example.com
+#     document_root: /var/www/secure
+#     ssl: true
+#     ssl_certificate: /etc/ssl/certs/secure.crt
+#     ssl_certificate_key: /etc/ssl/private/secure.key
+
+#=============================================
+# FIREWALL
+#=============================================
+webserver_configure_firewall: true
+
+#=============================================
+# MISC
+#=============================================
+webserver_deploy_default_page: true

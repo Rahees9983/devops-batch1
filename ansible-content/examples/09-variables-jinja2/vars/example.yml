@@ -1,0 +1,91 @@
+---
+# Example Variables File
+# Include with vars_files or include_vars
+
+# Application Configuration
+app_name: myapplication
+app_version: 2.0.0
+app_port: 8080
+app_host: 0.0.0.0
+
+# Database Configuration
+database:
+  engine: postgresql
+  host: localhost
+  port: 5432
+  name: myapp_production
+  user: myapp_user
+  password: "{{ vault_db_password | default('changeme') }}"
+  pool_size: 10
+  max_overflow: 20
+
+# Web Server Configuration
+webserver:
+  type: nginx
+  worker_processes: auto
+  worker_connections: 1024
+  keepalive_timeout: 65
+  client_max_body_size: 50M
+
+# Feature Flags
+features:
+  authentication: true
+  authorization: true
+  caching: true
+  rate_limiting: true
+  ssl_enabled: true
+  debug_mode: false
+
+# Logging Configuration
+logging:
+  level: info
+  format: json
+  path: /var/log/myapp
+  max_size: 100M
+  backup_count: 10
+  handlers:
+    - console
+    - file
+    - syslog
+
+# Users to Create
+system_users:
+  - name: deployer
+    groups: [wheel, docker]
+    ssh_key: true
+  - name: appuser
+    groups: [appgroup]
+    system: true
+  - name: monitoring
+    groups: [monitoring]
+    ssh_key: true
+
+# Packages to Install
+required_packages:
+  - vim
+  - git
+  - curl
+  - wget
+  - htop
+  - tmux
+
+# Environment Variables
+environment_vars:
+  NODE_ENV: production
+  RAILS_ENV: production
+  APP_SECRET: "{{ vault_app_secret | default('change_in_production') }}"
+  DATABASE_URL: "postgresql://{{ database.user }}:{{ database.password }}@{{ database.host }}:{{ database.port }}/{{ database.name }}"
+
+# Server Limits
+limits:
+  max_open_files: 65536
+  max_processes: 4096
+  memory_limit: 2G
+  cpu_limit: 2
+
+# Tags for Cloud Resources
+cloud_tags:
+  Environment: production
+  Project: myapp
+  Owner: devops
+  CostCenter: engineering

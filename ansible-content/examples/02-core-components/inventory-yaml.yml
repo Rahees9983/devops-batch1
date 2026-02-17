@@ -1,0 +1,80 @@
+---
+# YAML Format Inventory Example
+
+all:
+  vars:
+    ansible_user: ansible
+    ansible_python_interpreter: /usr/bin/python3
+    timezone: UTC
+
+  hosts:
+    mail.example.com:
+
+  children:
+    # Production Environment
+    production:
+      vars:
+        environment: prod
+        ntp_server: time.prod.example.com
+        log_level: warn
+      children:
+        webservers:
+          hosts:
+            web1.example.com:
+              http_port: 80
+            web2.example.com:
+              http_port: 80
+            web3.example.com:
+              ansible_host: 192.168.1.103
+              ansible_port: 2222
+              http_port: 8080
+          vars:
+            https_port: 443
+            max_clients: 200
+            document_root: /var/www/html
+
+        dbservers:
+          hosts:
+            db1.example.com:
+              db_role: primary
+            db2.example.com:
+              db_role: replica
+          vars:
+            db_port: 3306
+            max_connections: 100
+            data_dir: /var/lib/mysql
+
+    # Staging Environment
+    staging:
+      vars:
+        environment: staging
+        ntp_server: time.staging.example.com
+        log_level: debug
+      children:
+        appservers:
+          hosts:
+            staging-app1.example.com:
+            staging-app2.example.com:
+          vars:
+            app_port: 8080
+
+    # Load Balancers (separate group)
+    loadbalancers:
+      hosts:
+        lb1.example.com:
+          priority: 100
+        lb2.example.com:
+          priority: 50
+      vars:
+        lb_algorithm: roundrobin
+        health_check_interval: 30
+
+    # Geographic Regions
+    us_east:
+      children:
+        webservers:
+        dbservers:
+
+    us_west:
+      children:
+        loadbalancers:

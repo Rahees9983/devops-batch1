@@ -1,0 +1,157 @@
+---
+# Main tasks for webserver role
+
+#=============================================
+# PREREQUISITES
+#=============================================
+- name: Include OS-specific variables
+  include_vars: "{{ item }}"
+  with_first_found:
+    - "{{ ansible_distribution | lower }}.yml"
+    - "{{ ansible_os_family | lower }}.yml"
+    - default.yml
+  ignore_errors: yes
+
+#=============================================
+# PACKAGE INSTALLATION
+#=============================================
+- name: Install web server packages
+  package:
+    name: "{{ webserver_packages }}"
+    state: present
+  notify: Start webserver
+
+- name: Install additional packages
+  package:
+    name: "{{ webserver_additional_packages }}"
+    state: present
+  when: webserver_additional_packages | length > 0
+
+#=============================================
+# CONFIGURATION
+#=============================================
+- name: Create configuration directories
+  file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+  loop:
+    - "{{ webserver_config_dir }}"
+    - "{{ webserver_config_dir }}/conf.d"
+    - "{{ webserver_config_dir }}/sites-available"
+    - "{{ webserver_config_dir }}/sites-enabled"
+
+- name: Deploy main configuration
+  template:
+    src: "{{ webserver_main_config_template }}"
+    dest: "{{ webserver_config_dir }}/{{ webserver_main_config_file }}"
+    owner: root
+    group: root
+    mode: '0644'
+    validate: "{{ webserver_config_validate | default(omit) }}"
+  notify: Reload webserver
+
+- name: Deploy virtual hosts
+  template:
+    src: vhost.conf.j2
+    dest: "{{ webserver_config_dir }}/sites-available/{{ item.name }}.conf"
+    owner: root
+    group: root
+    mode: '0644'
+  loop: "{{ webserver_vhosts }}"
+  loop_control:
+    label: "{{ item.name }}"
+  notify: Reload webserver
+  when: webserver_vhosts | length > 0
+
+- name: Enable virtual hosts
+  file:
+    src: "{{ webserver_config_dir }}/sites-available/{{ item.name }}.conf"
+    dest: "{{ webserver_config_dir }}/sites-enabled/{{ item.name }}.conf"
+    state: link
+  loop: "{{ webserver_vhosts }}"
+  loop_control:
+    label: "{{ item.name }}"
+  notify: Reload webserver
+  when: webserver_vhosts | length > 0
+
+#=============================================
+# DOCUMENT ROOT
+#=============================================
+- name: Create document root directories
+  file:
+    path: "{{ item.document_root | default(webserver_default_document_root) }}"
+    state: directory
+    owner: "{{ webserver_user }}"
+    group: "{{ webserver_group }}"
+    mode: '0755'
+  loop: "{{ webserver_vhosts }}"
+  loop_control:
+    label: "{{ item.name }}"
+  when: webserver_vhosts | length > 0
+
+- name: Deploy default index page
+  template:
+    src: index.html.j2
+    dest: "{{ webserver_default_document_root }}/index.html"
+    owner: "{{ webserver_user }}"
+    group: "{{ webserver_group }}"
+    mode: '0644'
+  when: webserver_deploy_default_page | bool
+
+#=============================================
+# SSL CONFIGURATION
+#=============================================
+- name: Create SSL directory
+  file:
+    path: "{{ webserver_ssl_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: '0700'
+  when: webserver_ssl_enabled | bool
+
+- name: Deploy SSL certificates
+  copy:
+    src: "{{ item.ssl_certificate_file }}"
+    dest: "{{ webserver_ssl_dir }}/{{ item.name }}.crt"
+    owner: root
+    group: root
+    mode: '0644'
+  loop: "{{ webserver_vhosts | selectattr('ssl', 'defined') | selectattr('ssl') | list }}"
+  loop_control:
+    label: "{{ item.name }}"
+  notify: Reload webserver
+  when: webserver_ssl_enabled | bool and item.ssl_certificate_file is defined
+
+#=============================================
+# FIREWALL
+#=============================================
+- name: Configure firewall for HTTP
+  firewalld:
+    service: http
+    permanent: yes
+    state: enabled
+    immediate: yes
+  when: webserver_configure_firewall | bool
+  ignore_errors: yes
+
+- name: Configure firewall for HTTPS
+  firewalld:
+    service: https
+    permanent: yes
+    state: enabled
+    immediate: yes
+  when: webserver_configure_firewall | bool and webserver_ssl_enabled | bool
+  ignore_errors: yes
+
+#=============================================
+# SERVICE
+#=============================================
+- name: Ensure webserver is started and enabled
+  service:
+    name: "{{ webserver_service_name }}"
+    state: started
+    enabled: yes

@@ -1,0 +1,259 @@
+---
+# Conditional Examples
+
+- name: Conditional Examples
+  hosts: all
+  gather_facts: yes
+
+  vars:
+    app_env: production
+    debug_mode: false
+    feature_flags:
+      new_ui: true
+      beta_features: false
+    users:
+      - name: admin
+        role: admin
+      - name: viewer
+        role: viewer
+
+  tasks:
+    #=============================================
+    # BASIC WHEN CONDITION
+    #=============================================
+    - name: Basic when condition
+      debug:
+        msg: "This is production environment"
+      when: app_env == "production"
+
+    - name: Boolean condition
+      debug:
+        msg: "Debug mode is enabled"
+      when: debug_mode
+
+    - name: Negation
+      debug:
+        msg: "Debug mode is disabled"
+      when: not debug_mode
+
+    #=============================================
+    # OS-BASED CONDITIONS
+    #=============================================
+    - name: Task for RedHat family
+      debug:
+        msg: "Running on RedHat-based system"
+      when: ansible_os_family == "RedHat"
+
+    - name: Task for Debian family
+      debug:
+        msg: "Running on Debian-based system"
+      when: ansible_os_family == "Debian"
+
+    - name: Task for specific distribution
+      debug:
+        msg: "Running on CentOS 8"
+      when:
+        - ansible_distribution == "CentOS"
+        - ansible_distribution_major_version == "8"
+
+    #=============================================
+    # MULTIPLE CONDITIONS (AND)
+    #=============================================
+    - name: Multiple conditions (AND) - list style
+      debug:
+        msg: "Production with debug disabled"
+      when:
+        - app_env == "production"
+        - not debug_mode
+
+    - name: Multiple conditions (AND) - single line
+      debug:
+        msg: "Same as above"
+      when: app_env == "production" and not debug_mode
+
+    #=============================================
+    # OR CONDITIONS
+    #=============================================
+    - name: OR condition
+      debug:
+        msg: "Either staging or development"
+      when: app_env == "staging" or app_env == "development"
+
+    - name: Complex condition
+      debug:
+        msg: "Complex condition met"
+      when: >
+        (app_env == "production" and not debug_mode) or
+        (app_env == "staging" and debug_mode)
+
+    #=============================================
+    # VARIABLE EXISTENCE
+    #=============================================
+    - name: Check if variable is defined
+      debug:
+        msg: "app_env is defined: {{ app_env }}"
+      when: app_env is defined
+
+    - name: Check if variable is undefined
+      debug:
+        msg: "This variable doesn't exist"
+      when: nonexistent_var is not defined
+
+    - name: Check if variable is truthy
+      debug:
+        msg: "Variable is truthy"
+      when: app_env
+
+    #=============================================
+    # STRING TESTS
+    #=============================================
+    - name: String contains
+      debug:
+        msg: "Production environment detected"
+      when: "'prod' in app_env"
+
+    - name: String starts with
+      debug:
+        msg: "Environment starts with 'prod'"
+      when: app_env is match('^prod.*')
+
+    - name: String regex search
+      debug:
+        msg: "Contains 'duct'"
+      when: app_env is search('duct')
+
+    #=============================================
+    # LIST/COLLECTION TESTS
+    #=============================================
+    - name: Check if in list
+      debug:
+        msg: "Valid environment"
+      when: app_env in ['production', 'staging', 'development']
+
+    - name: Check list length
+      debug:
+        msg: "We have users"
+      when: users | length > 0
+
+    - name: Check if empty
+      debug:
+        msg: "Feature flags exist"
+      when: feature_flags
+
+    #=============================================
+    # DICTIONARY CONDITIONS
+    #=============================================
+    - name: Check dictionary key
+      debug:
+        msg: "New UI is enabled"
+      when: feature_flags.new_ui | default(false)
+
+    - name: Dictionary key exists
+      debug:
+        msg: "Beta features key exists"
+      when: "'beta_features' in feature_flags"
+
+    #=============================================
+    # REGISTERED VARIABLE CONDITIONS
+    #=============================================
+    - name: Run command
+      command: echo "test"
+      register: command_result
+      changed_when: false
+
+    - name: Check command success
+      debug:
+        msg: "Command succeeded"
+      when: command_result.rc == 0
+
+    - name: Check command output
+      debug:
+        msg: "Output contains 'test'"
+      when: "'test' in command_result.stdout"
+
+    - name: Check if changed
+      debug:
+        msg: "Something changed"
+      when: command_result.changed
+
+    #=============================================
+    # FILE EXISTENCE
+    #=============================================
+    - name: Check file existence
+      stat:
+        path: /etc/passwd
+      register: passwd_file
+
+    - name: Task if file exists
+      debug:
+        msg: "/etc/passwd exists"
+      when: passwd_file.stat.exists
+
+    - name: Task if file is regular file
+      debug:
+        msg: "/etc/passwd is a regular file"
+      when: passwd_file.stat.isreg
+
+    #=============================================
+    # INVENTORY CONDITIONS
+    #=============================================
+    - name: Check group membership
+      debug:
+        msg: "This host is a webserver"
+      when: "'webservers' in group_names"
+
+    - name: Check if first host
+      debug:
+        msg: "This is the first host in the play"
+      when: inventory_hostname == ansible_play_hosts[0]
+
+    #=============================================
+    # TYPE TESTS
+    #=============================================
+    - name: Check type - string
+      debug:
+        msg: "app_env is a string"
+      when: app_env is string
+
+    - name: Check type - number
+      vars:
+        port: 8080
+      debug:
+        msg: "port is a number"
+      when: port is number
+
+    - name: Check type - iterable
+      debug:
+        msg: "users is iterable"
+      when: users is iterable
+
+    - name: Check type - mapping (dict)
+      debug:
+        msg: "feature_flags is a mapping"
+      when: feature_flags is mapping
+
+    #=============================================
+    # FAILED/SKIPPED CONDITIONS
+    #=============================================
+    - name: Task that might fail
+      command: /bin/false
+      register: might_fail
+      ignore_errors: yes
+
+    - name: Run if previous failed
+      debug:
+        msg: "Previous task failed"
+      when: might_fail is failed
+
+    #=============================================
+    # CHECK MODE CONDITION
+    #=============================================
+    - name: Skip in check mode
+      debug:
+        msg: "This only runs in real mode"
+      when: not ansible_check_mode
+
+    - name: Run only in check mode
+      debug:
+        msg: "This only runs in check mode"
+      when: ansible_check_mode

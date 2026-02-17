@@ -1,0 +1,241 @@
+---
+# Cron (Scheduled Tasks) Module Examples
+
+#=============================================
+# CRON MODULE
+#=============================================
+- name: Cron Module Examples
+  hosts: all
+  become: yes
+
+  tasks:
+    #-----------------------------------------
+    # BASIC CRON JOBS
+    #-----------------------------------------
+
+    # Run every minute
+    - name: Run script every minute
+      cron:
+        name: "Health check"
+        job: "/usr/local/bin/health-check.sh >> /var/log/health.log 2>&1"
+        minute: "*"
+
+    # Run every 5 minutes
+    - name: Run every 5 minutes
+      cron:
+        name: "Check disk space"
+        job: "/usr/local/bin/check-disk.sh"
+        minute: "*/5"
+
+    # Run every hour
+    - name: Run hourly cleanup
+      cron:
+        name: "Hourly cleanup"
+        job: "find /tmp -type f -mtime +1 -delete"
+        minute: "0"
+        hour: "*"
+
+    # Run daily at 2 AM
+    - name: Daily backup at 2 AM
+      cron:
+        name: "Daily backup"
+        job: "/usr/local/bin/backup.sh"
+        minute: "0"
+        hour: "2"
+
+    # Run at specific time
+    - name: Run at 8:30 AM daily
+      cron:
+        name: "Morning report"
+        job: "/usr/local/bin/morning-report.sh"
+        minute: "30"
+        hour: "8"
+
+    #-----------------------------------------
+    # WEEKLY/MONTHLY JOBS
+    #-----------------------------------------
+
+    # Run every Sunday at midnight
+    - name: Weekly maintenance (Sunday midnight)
+      cron:
+        name: "Weekly maintenance"
+        job: "/usr/local/bin/weekly-maintenance.sh"
+        minute: "0"
+        hour: "0"
+        weekday: "0"
+
+    # Run on specific days
+    - name: Run Mon-Fri at 6 PM
+      cron:
+        name: "Weekday report"
+        job: "/usr/local/bin/daily-report.sh"
+        minute: "0"
+        hour: "18"
+        weekday: "1-5"
+
+    # First day of month
+    - name: Monthly cleanup (1st at midnight)
+      cron:
+        name: "Monthly cleanup"
+        job: "/usr/local/bin/monthly-cleanup.sh"
+        minute: "0"
+        hour: "0"
+        day: "1"
+
+    # Last day of month (approximate)
+    - name: End of month report
+      cron:
+        name: "Month end report"
+        job: "/usr/local/bin/month-end.sh"
+        minute: "0"
+        hour: "23"
+        day: "28-31"
+
+    #-----------------------------------------
+    # SPECIAL TIME SPECIFICATIONS
+    #-----------------------------------------
+
+    # Use special_time
+    - name: Run at reboot
+      cron:
+        name: "Startup script"
+        special_time: reboot
+        job: "/usr/local/bin/on-startup.sh"
+
+    - name: Run daily (using special_time)
+      cron:
+        name: "Daily task"
+        special_time: daily
+        job: "/usr/local/bin/daily-task.sh"
+
+    # Available special_time values:
+    # - reboot, yearly, annually, monthly, weekly, daily, hourly
+
+    #-----------------------------------------
+    # CRON ENVIRONMENT VARIABLES
+    #-----------------------------------------
+
+    - name: Set PATH for cron
+      cron:
+        name: PATH
+        env: yes
+        value: "/usr/local/bin:/usr/bin:/bin"
+
+    - name: Set MAILTO
+      cron:
+        name: MAILTO
+        env: yes
+        value: "admin@example.com"
+
+    - name: Set custom environment variable
+      cron:
+        name: APP_ENV
+        env: yes
+        value: "production"
+
+    #-----------------------------------------
+    # USER SPECIFIC CRON
+    #-----------------------------------------
+
+    - name: Create cron for specific user
+      cron:
+        name: "User backup"
+        job: "/home/appuser/backup.sh"
+        minute: "0"
+        hour: "3"
+        user: appuser
+
+    #-----------------------------------------
+    # MANAGING CRON JOBS
+    #-----------------------------------------
+
+    # Disable cron job (keep but comment out)
+    - name: Disable cron job
+      cron:
+        name: "Temporary disabled job"
+        job: "/usr/local/bin/temp-job.sh"
+        minute: "0"
+        hour: "4"
+        disabled: yes
+
+    # Remove cron job
+    - name: Remove old cron job
+      cron:
+        name: "Old job to remove"
+        state: absent
+
+    # Remove all jobs for user
+    - name: Remove user cron jobs
+      cron:
+        name: "*"
+        user: olduser
+        state: absent
+      when: false  # Example only
+
+    #-----------------------------------------
+    # CRON FILE MANAGEMENT
+    #-----------------------------------------
+
+    # Create cron in separate file
+    - name: Create cron in separate file
+      cron:
+        name: "App cron"
+        job: "/opt/app/bin/cron.sh"
+        minute: "*/10"
+        cron_file: app-crons
+        user: root
+
+    # Create comprehensive cron file
+    - name: Deploy cron file
+      copy:
+        content: |
+          # Application Cron Jobs
+          SHELL=/bin/bash
+          PATH=/usr/local/bin:/usr/bin:/bin
+          MAILTO=admin@example.com
+
+          # Syntax: minute hour day month weekday user command
+
+          # Every 5 minutes - health check
+          */5 * * * * root /usr/local/bin/health-check.sh
+
+          # Daily at 2 AM - backup
+          0 2 * * * root /usr/local/bin/backup.sh
+
+          # Weekly Sunday at 3 AM - cleanup
+          0 3 * * 0 root /usr/local/bin/weekly-cleanup.sh
+
+          # Monthly 1st at midnight - reports
+          0 0 1 * * root /usr/local/bin/monthly-report.sh
+        dest: /etc/cron.d/app-crons
+        mode: '0644'
+
+#=============================================
+# AT MODULE (One-time scheduled tasks)
+#=============================================
+- name: AT Module Examples
+  hosts: all
+  become: yes
+
+  tasks:
+    # Schedule one-time task
+    - name: Schedule reboot in 5 minutes
+      at:
+        command: /sbin/reboot
+        count: 5
+        units: minutes
+        unique: yes
+      when: false  # Don't actually schedule reboot!
+
+    # Schedule at specific time
+    - name: Schedule task at specific time
+      at:
+        command: /usr/local/bin/one-time-task.sh
+        count: 1
+        units: hours
+
+    # Remove scheduled at job
+    - name: Remove at job
+      at:
+        command: /usr/local/bin/one-time-task.sh
+        state: absent

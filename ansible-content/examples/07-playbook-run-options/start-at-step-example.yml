@@ -1,0 +1,118 @@
+---
+# Start-at and Step Examples
+# Demonstrates task selection and stepping
+
+- name: Multi-Step Deployment
+  hosts: all
+  become: yes
+
+  tasks:
+    # Step 1
+    - name: "Step 1: Stop application"
+      debug:
+        msg: "Stopping application..."
+      # service:
+      #   name: myapp
+      #   state: stopped
+
+    # Step 2
+    - name: "Step 2: Backup current version"
+      debug:
+        msg: "Creating backup..."
+      # archive:
+      #   path: /opt/myapp
+      #   dest: /backup/myapp-backup.tar.gz
+
+    # Step 3
+    - name: "Step 3: Download new version"
+      debug:
+        msg: "Downloading new version..."
+      # get_url:
+      #   url: https://releases.example.com/myapp-1.2.3.tar.gz
+      #   dest: /tmp/myapp-new.tar.gz
+
+    # Step 4
+    - name: "Step 4: Extract new version"
+      debug:
+        msg: "Extracting files..."
+      # unarchive:
+      #   src: /tmp/myapp-new.tar.gz
+      #   dest: /opt/myapp
+      #   remote_src: yes
+
+    # Step 5
+    - name: "Step 5: Run database migrations"
+      debug:
+        msg: "Running migrations..."
+      # command: /opt/myapp/bin/migrate
+
+    # Step 6
+    - name: "Step 6: Update configuration"
+      debug:
+        msg: "Updating configuration..."
+      # template:
+      #   src: app.conf.j2
+      #   dest: /opt/myapp/config/app.conf
+
+    # Step 7
+    - name: "Step 7: Start application"
+      debug:
+        msg: "Starting application..."
+      # service:
+      #   name: myapp
+      #   state: started
+
+    # Step 8
+    - name: "Step 8: Run health check"
+      debug:
+        msg: "Running health check..."
+      # uri:
+      #   url: http://localhost:8080/health
+      #   status_code: 200
+
+    # Step 9
+    - name: "Step 9: Notify deployment complete"
+      debug:
+        msg: "Deployment completed successfully!"
+
+    # Step 10
+    - name: "Step 10: Clean up"
+      debug:
+        msg: "Cleaning up temporary files..."
+      # file:
+      #   path: /tmp/myapp-new.tar.gz
+      #   state: absent
+
+#=============================================
+# Usage Examples:
+#=============================================
+
+# List all tasks:
+#   ansible-playbook start-at-step-example.yml --list-tasks
+#
+# Output:
+#   playbook: start-at-step-example.yml
+#     play #1 (all): Multi-Step Deployment
+#       tasks:
+#         Step 1: Stop application
+#         Step 2: Backup current version
+#         Step 3: Download new version
+#         ...
+
+# Start at specific task (skip previous):
+#   ansible-playbook start-at-step-example.yml --start-at-task="Step 5: Run database migrations"
+
+# Step through tasks interactively:
+#   ansible-playbook start-at-step-example.yml --step
+#
+# Interactive prompts:
+#   Perform task: Step 1: Stop application (N)o/(y)es/(c)ontinue:
+#   - N: Skip this task
+#   - y: Execute this task
+#   - c: Continue without prompting (run remaining tasks)
+
+# Combine with limit:
+#   ansible-playbook start-at-step-example.yml --start-at-task="Step 5: Run database migrations" --limit web1
+
+# Combine with check mode:
+#   ansible-playbook start-at-step-example.yml --start-at-task="Step 5: Run database migrations" --check

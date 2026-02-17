@@ -1,0 +1,54 @@
+---
+# First Ansible Playbook - Introduction Example
+# This playbook demonstrates basic Ansible concepts
+
+- name: My First Ansible Playbook
+  hosts: all                    # Target all hosts in inventory
+  become: yes                   # Run tasks with sudo/root privileges
+  gather_facts: yes             # Collect system information
+
+  vars:
+    message: "Hello from Ansible!"
+    packages:
+      - vim
+      - wget
+      - curl
+
+  tasks:
+    # Task 1: Display a message
+    - name: Display welcome message
+      debug:
+        msg: "{{ message }}"
+
+    # Task 2: Show system facts
+    - name: Show OS information
+      debug:
+        msg: "Running on {{ ansible_distribution }} {{ ansible_distribution_version }}"
+
+    # Task 3: Create a file
+    - name: Create a test file
+      file:
+        path: /tmp/ansible-test.txt
+        state: touch
+        mode: '0644'
+
+    # Task 4: Add content to the file
+    - name: Write content to test file
+      copy:
+        content: |
+          This file was created by Ansible
+          Host: {{ ansible_hostname }}
+          Date: {{ ansible_date_time.date }}
+          OS: {{ ansible_os_family }}
+        dest: /tmp/ansible-test.txt
+
+    # Task 5: Install packages (commented for safety)
+    # - name: Install common packages
+    #   package:
+    #     name: "{{ packages }}"
+    #     state: present
+
+    # Task 6: Display completion message
+    - name: Playbook completed
+      debug:
+        msg: "Playbook executed successfully on {{ inventory_hostname }}"

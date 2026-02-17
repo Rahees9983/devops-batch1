@@ -1,0 +1,119 @@
+---
+# Playbook to configure managed nodes
+# Run this AFTER initial SSH access is established
+
+- name: Configure Managed Nodes for Ansible
+  hosts: all
+  become: yes
+  gather_facts: yes
+
+  vars:
+    ansible_user: ansible
+    ssh_key_path: "{{ lookup('env', 'HOME') }}/.ssh/ansible_key.pub"
+
+  tasks:
+    # Ensure Python is installed
+    - name: Install Python 3 (RedHat)
+      raw: dnf install -y python3
+      when: ansible_os_family == "RedHat"
+      changed_when: false
+      ignore_errors: yes
+
+    - name: Install Python 3 (Debian)
+      raw: apt-get update && apt-get install -y python3
+      when: ansible_os_family == "Debian"
+      changed_when: false
+      ignore_errors: yes
+
+    # Create ansible user
+    - name: Create ansible user
+      user:
+        name: "{{ ansible_user }}"
+        shell: /bin/bash
+        create_home: yes
+        state: present
+
+    # Configure SSH key
+    - name: Set up SSH authorized key
+      authorized_key:
+        user: "{{ ansible_user }}"
+        key: "{{ lookup('file', ssh_key_path) }}"
+        state: present
+
+    # Configure sudo access
+    - name: Configure passwordless sudo
+      copy:
+        content: "{{ ansible_user }} ALL=(ALL) NOPASSWD: ALL\n"
+        dest: "/etc/sudoers.d/{{ ansible_user }}"
+        mode: '0440'
+        validate: 'visudo -cf %s'
+
+    # SSH configuration
+    - name: Ensure SSH is configured for key authentication
+      lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: "{{ item.regexp }}"
+        line: "{{ item.line }}"
+        state: present
+      loop:
+        - { regexp: '^#?PubkeyAuthentication', line: 'PubkeyAuthentication yes' }
+        - { regexp: '^#?AuthorizedKeysFile', line: 'AuthorizedKeysFile .ssh/authorized_keys' }
+      notify: Restart SSH
+
+    # Install useful packages
+    - name: Install common packages
+      package:
+        name:
+          - vim
+          - curl
+          - wget
+          - tar
+          - gzip
+        state: present
+
+  handlers:
+    - name: Restart SSH
+      service:
+        name: "{{ 'sshd' if ansible_os_family == 'RedHat' else 'ssh' }}"
+        state: restarted
+
+---
+# Playbook to validate managed node configuration
+- name: Validate Managed Node Configuration
+  hosts: all
+  become: yes
+  gather_facts: yes
+
+  tasks:
+    - name: Test sudo access
+      command: whoami
+      register: whoami_result
+      changed_when: false
+
+    - name: Verify running as root
+      assert:
+        that:
+          - whoami_result.stdout == "root"
+        fail_msg: "Privilege escalation failed"
+        success_msg: "Privilege escalation working correctly"
+
+    - name: Check Python version
+      command: python3 --version
+      register: python_version
+      changed_when: false
+
+    - name: Display Python version
+      debug:
+        msg: "Python version: {{ python_version.stdout }}"
+
+    - name: Verify SSH configuration
+      command: sshd -t
+      changed_when: false
+
+    - name: Confirm node is ready
+      debug:
+        msg: |
+          Node {{ inventory_hostname }} is ready for Ansible management!
+          - OS: {{ ansible_distribution }} {{ ansible_distribution_version }}
+          - Python: {{ python_version.stdout }}
+          - IP: {{ ansible_default_ipv4.address | default('N/A') }}

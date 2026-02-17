@@ -1,0 +1,278 @@
+---
+# Complete Playbook Example
+# Demonstrates all playbook components
+
+#=============================================
+# PLAY 1: COMMON CONFIGURATION
+#=============================================
+- name: Common Configuration for All Servers
+  hosts: all
+  become: yes
+  gather_facts: yes
+
+  vars:
+    common_packages:
+      - vim
+      - wget
+      - curl
+      - git
+      - htop
+    timezone: UTC
+    ntp_servers:
+      - 0.pool.ntp.org
+      - 1.pool.ntp.org
+
+  vars_files:
+    - vars/common.yml
+
+  pre_tasks:
+    - name: Display target hosts
+      debug:
+        msg: "Configuring {{ inventory_hostname }} ({{ ansible_distribution }})"
+
+    - name: Update package cache (Debian)
+      apt:
+        update_cache: yes
+        cache_valid_time: 3600
+      when: ansible_os_family == "Debian"
+
+    - name: Update package cache (RedHat)
+      yum:
+        update_cache: yes
+      when: ansible_os_family == "RedHat"
+
+  tasks:
+    - name: Install common packages
+      package:
+        name: "{{ common_packages }}"
+        state: present
+
+    - name: Set timezone
+      timezone:
+        name: "{{ timezone }}"
+      ignore_errors: yes
+
+    - name: Create admin user
+      user:
+        name: admin
+        groups: wheel
+        shell: /bin/bash
+        state: present
+
+    - name: Configure SSH key for admin
+      authorized_key:
+        user: admin
+        key: "{{ lookup('file', '~/.ssh/id_rsa.pub') }}"
+        state: present
+      ignore_errors: yes
+
+  post_tasks:
+    - name: Display completion message
+      debug:
+        msg: "Common configuration completed for {{ inventory_hostname }}"
+
+#=============================================
+# PLAY 2: WEB SERVERS
+#=============================================
+- name: Configure Web Servers
+  hosts: webservers
+  become: yes
+  gather_facts: yes
+
+  vars:
+    http_port: 80
+    https_port: 443
+    document_root: /var/www/html
+    webserver_packages:
+      - nginx
+    ssl_enabled: false
+
+  pre_tasks:
+    - name: Ensure directories exist
+      file:
+        path: "{{ item }}"
+        state: directory
+        mode: '0755'
+      loop:
+        - "{{ document_root }}"
+        - /etc/nginx/conf.d
+
+  tasks:
+    - name: Install web server
+      package:
+        name: "{{ webserver_packages }}"
+        state: present
+      notify: Start nginx
+
+    - name: Deploy nginx configuration
+      template:
+        src: templates/nginx.conf.j2
+        dest: /etc/nginx/nginx.conf
+        mode: '0644'
+      notify: Reload nginx
+      when: false  # Template doesn't exist
+
+    - name: Deploy default index page
+      copy:
+        content: |
+          <!DOCTYPE html>
+          <html>
+          <head><title>Welcome</title></head>
+          <body>
+            <h1>Welcome to {{ inventory_hostname }}</h1>
+            <p>Server: {{ ansible_fqdn }}</p>
+            <p>OS: {{ ansible_distribution }} {{ ansible_distribution_version }}</p>
+          </body>
+          </html>
+        dest: "{{ document_root }}/index.html"
+        mode: '0644'
+
+    - name: Configure firewall for HTTP
+      firewalld:
+        service: http
+        permanent: yes
+        state: enabled
+        immediate: yes
+      ignore_errors: yes
+
+  post_tasks:
+    - name: Verify nginx is running
+      uri:
+        url: "http://localhost:{{ http_port }}/"
+        status_code: 200
+      register: nginx_check
+      ignore_errors: yes
+
+    - name: Display nginx status
+      debug:
+        msg: "Nginx is {{ 'running' if nginx_check is success else 'not responding' }}"
+
+  handlers:
+    - name: Start nginx
+      service:
+        name: nginx
+        state: started
+        enabled: yes
+
+    - name: Reload nginx
+      service:
+        name: nginx
+        state: reloaded
+
+    - name: Restart nginx
+      service:
+        name: nginx
+        state: restarted
+
+#=============================================
+# PLAY 3: DATABASE SERVERS
+#=============================================
+- name: Configure Database Servers
+  hosts: dbservers
+  become: yes
+  gather_facts: yes
+
+  vars:
+    db_name: myapp
+    db_user: myapp_user
+    db_password: "{{ vault_db_password | default('changeme') }}"
+    mysql_packages:
+      - mysql-server
+      - python3-pymysql
+
+  tasks:
+    - name: Install MySQL packages
+      package:
+        name: "{{ mysql_packages }}"
+        state: present
+      when: false  # Skip installation
+
+    - name: Start MySQL service
+      service:
+        name: mysqld
+        state: started
+        enabled: yes
+      when: false  # Skip
+
+    - name: Create application database
+      mysql_db:
+        name: "{{ db_name }}"
+        state: present
+      when: false  # Skip
+
+    - name: Create database user
+      mysql_user:
+        name: "{{ db_user }}"
+        password: "{{ db_password }}"
+        priv: "{{ db_name }}.*:ALL"
+        state: present
+      when: false  # Skip
+
+#=============================================
+# PLAY 4: APPLICATION DEPLOYMENT
+#=============================================
+- name: Deploy Application
+  hosts: webservers
+  become: yes
+  serial: 1  # Rolling deployment
+
+  vars:
+    app_version: "1.0.0"
+    app_dir: /opt/myapp
+    deploy_user: deployer
+
+  tasks:
+    - name: Create application directory
+      file:
+        path: "{{ app_dir }}"
+        state: directory
+        owner: "{{ deploy_user }}"
+        mode: '0755'
+      ignore_errors: yes
+
+    - name: Deploy application version file
+      copy:
+        content: |
+          Application: myapp
+          Version: {{ app_version }}
+          Deployed: {{ ansible_date_time.iso8601 }}
+          Host: {{ inventory_hostname }}
+        dest: "{{ app_dir }}/VERSION"
+        mode: '0644'
+
+    - name: Simulate deployment delay
+      pause:
+        seconds: 2
+
+    - name: Verify deployment
+      debug:
+        msg: "Application v{{ app_version }} deployed to {{ inventory_hostname }}"
+
+#=============================================
+# PLAY 5: CLEANUP AND REPORTING
+#=============================================
+- name: Cleanup and Reporting
+  hosts: all
+  become: yes
+  gather_facts: no
+
+  tasks:
+    - name: Remove temporary files
+      file:
+        path: /tmp/ansible_temp
+        state: absent
+
+    - name: Generate deployment report
+      copy:
+        content: |
+          Deployment Report
+          =================
+          Host: {{ inventory_hostname }}
+          Date: {{ lookup('pipe', 'date') }}
+          Status: Complete
+        dest: /var/log/deployment-report.txt
+        mode: '0644'
+
+    - name: Display final status
+      debug:
+        msg: "All plays completed successfully for {{ inventory_hostname }}"

@@ -1,0 +1,248 @@
+---
+# Variable Types and Usage Examples
+
+- name: Variable Examples
+  hosts: localhost
+  gather_facts: yes
+
+  #=============================================
+  # VARIABLE DEFINITIONS
+  #=============================================
+  vars:
+    # Simple variables
+    app_name: "myapp"
+    app_version: "1.2.3"
+    app_port: 8080
+    debug_mode: true
+    max_connections: 100
+
+    # List variables
+    packages:
+      - nginx
+      - php
+      - mysql
+
+    allowed_ports:
+      - 22
+      - 80
+      - 443
+      - 8080
+
+    # Dictionary variables
+    database:
+      host: localhost
+      port: 3306
+      name: myapp_db
+      user: myapp_user
+      password: secret123
+
+    # Nested dictionary
+    app_config:
+      server:
+        host: 0.0.0.0
+        port: 8080
+      logging:
+        level: info
+        path: /var/log/myapp
+      features:
+        auth: true
+        cache: true
+        debug: false
+
+    # List of dictionaries
+    users:
+      - name: john
+        role: admin
+        email: john@example.com
+      - name: jane
+        role: developer
+        email: jane@example.com
+      - name: bob
+        role: viewer
+        email: bob@example.com
+
+  tasks:
+    #=============================================
+    # ACCESSING SIMPLE VARIABLES
+    #=============================================
+    - name: Display simple variables
+      debug:
+        msg: |
+          App: {{ app_name }} v{{ app_version }}
+          Port: {{ app_port }}
+          Debug: {{ debug_mode }}
+
+    #=============================================
+    # ACCESSING LIST VARIABLES
+    #=============================================
+    - name: Display entire list
+      debug:
+        var: packages
+
+    - name: Access list by index
+      debug:
+        msg: |
+          First package: {{ packages[0] }}
+          Last package: {{ packages[-1] }}
+          Second package: {{ packages[1] }}
+
+    - name: Loop through list
+      debug:
+        msg: "Package: {{ item }}"
+      loop: "{{ packages }}"
+
+    #=============================================
+    # ACCESSING DICTIONARY VARIABLES
+    #=============================================
+    - name: Access dictionary - dot notation
+      debug:
+        msg: "Database host: {{ database.host }}:{{ database.port }}"
+
+    - name: Access dictionary - bracket notation
+      debug:
+        msg: "Database name: {{ database['name'] }}"
+
+    - name: Display nested dictionary
+      debug:
+        msg: |
+          Server: {{ app_config.server.host }}:{{ app_config.server.port }}
+          Log level: {{ app_config.logging.level }}
+          Auth enabled: {{ app_config.features.auth }}
+
+    #=============================================
+    # ITERATING DICTIONARIES
+    #=============================================
+    - name: Loop dictionary keys
+      debug:
+        msg: "Key: {{ item.key }}, Value: {{ item.value }}"
+      loop: "{{ database | dict2items }}"
+
+    - name: Loop list of dictionaries
+      debug:
+        msg: "User: {{ item.name }} ({{ item.role }}) - {{ item.email }}"
+      loop: "{{ users }}"
+
+    #=============================================
+    # VARIABLE OPERATIONS
+    #=============================================
+    - name: String concatenation
+      vars:
+        full_name: "{{ app_name }}-{{ app_version }}"
+      debug:
+        msg: "Full name: {{ full_name }}"
+
+    - name: Math operations
+      vars:
+        double_port: "{{ app_port * 2 }}"
+        next_port: "{{ app_port + 1 }}"
+      debug:
+        msg: |
+          Original port: {{ app_port }}
+          Double: {{ double_port }}
+          Next: {{ next_port }}
+
+    - name: Conditional assignment
+      vars:
+        log_level: "{{ 'debug' if debug_mode else 'info' }}"
+      debug:
+        msg: "Log level: {{ log_level }}"
+
+    #=============================================
+    # DEFAULT VALUES
+    #=============================================
+    - name: Using default filter
+      debug:
+        msg: |
+          Defined: {{ app_name | default('unknown') }}
+          Undefined: {{ undefined_var | default('fallback_value') }}
+          Empty string default: {{ '' | default('was empty', true) }}
+
+    #=============================================
+    # REGISTERED VARIABLES
+    #=============================================
+    - name: Run command and register output
+      command: date +%Y-%m-%d
+      register: date_result
+      changed_when: false
+
+    - name: Display registered variable
+      debug:
+        msg: |
+          Full result: {{ date_result }}
+          Return code: {{ date_result.rc }}
+          Output: {{ date_result.stdout }}
+          Changed: {{ date_result.changed }}
+
+    - name: Use registered variable in condition
+      debug:
+        msg: "Command succeeded!"
+      when: date_result.rc == 0
+
+    #=============================================
+    # SET_FACT - Dynamic Variables
+    #=============================================
+    - name: Set fact dynamically
+      set_fact:
+        deployment_id: "{{ ansible_date_time.epoch }}"
+        environment: production
+
+    - name: Use set_fact variable
+      debug:
+        msg: "Deployment {{ deployment_id }} to {{ environment }}"
+
+    #=============================================
+    # MAGIC VARIABLES
+    #=============================================
+    - name: Display magic variables
+      debug:
+        msg: |
+          Inventory hostname: {{ inventory_hostname }}
+          Groups I belong to: {{ group_names }}
+          All groups: {{ groups.keys() | list }}
+          Play hosts: {{ ansible_play_hosts }}
+          Check mode: {{ ansible_check_mode }}
+
+    #=============================================
+    # VARIABLE SCOPE EXAMPLE
+    #=============================================
+    - name: Task with local variable
+      vars:
+        local_var: "I only exist in this task"
+      debug:
+        msg: "{{ local_var }}"
+
+    # This would fail - local_var is out of scope
+    # - name: Try to access local_var
+    #   debug:
+    #     msg: "{{ local_var }}"
+
+---
+# Variable Precedence Example
+- name: Variable Precedence Demo
+  hosts: localhost
+  gather_facts: no
+
+  vars:
+    precedence_var: "play vars"
+
+  vars_files:
+    - vars/example.yml
+
+  tasks:
+    - name: Show variable from vars
+      debug:
+        msg: "Value: {{ precedence_var }}"
+
+    - name: Override with task vars
+      vars:
+        precedence_var: "task vars (highest)"
+      debug:
+        msg: "Value: {{ precedence_var }}"
+
+    - name: Block level override
+      block:
+        - name: Show block var
+          debug:
+            msg: "Value: {{ precedence_var }}"
+      vars:
+        precedence_var: "block vars"

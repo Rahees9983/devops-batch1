@@ -1,0 +1,232 @@
+---
+# Error Handling Examples
+
+- name: Error Handling Examples
+  hosts: all
+  gather_facts: yes
+
+  tasks:
+    #=============================================
+    # IGNORE ERRORS
+    #=============================================
+    - name: Task that might fail
+      command: /bin/false
+      ignore_errors: yes
+
+    - name: This task will still run
+      debug:
+        msg: "Previous task failure was ignored"
+
+    #=============================================
+    # IGNORE UNREACHABLE
+    #=============================================
+    - name: Task for potentially offline hosts
+      ping:
+      ignore_unreachable: yes
+
+    #=============================================
+    # FAILED_WHEN
+    #=============================================
+    - name: Custom failure condition
+      command: echo "ERROR: Something went wrong"
+      register: result
+      failed_when: "'ERROR' in result.stdout"
+      ignore_errors: yes
+
+    - name: Check based on return code
+      command: "exit 5"
+      register: result
+      failed_when: result.rc not in [0, 5]
+      ignore_errors: yes
+
+    - name: Multiple failure conditions
+      shell: |
+        echo "Status: WARNING"
+        exit 0
+      register: result
+      failed_when:
+        - "'ERROR' in result.stdout"
+        - "'FATAL' in result.stdout"
+      ignore_errors: yes
+
+    #=============================================
+    # CHANGED_WHEN
+    #=============================================
+    - name: Command that doesn't change anything
+      command: grep root /etc/passwd
+      register: grep_result
+      changed_when: false
+
+    - name: Custom changed condition
+      shell: |
+        if [ -f /tmp/marker ]; then
+          echo "EXISTS"
+        else
+          touch /tmp/marker
+          echo "CREATED"
+        fi
+      register: marker_result
+      changed_when: "'CREATED' in marker_result.stdout"
+
+    - name: Never report changed
+      command: date
+      changed_when: false
+
+    #=============================================
+    # REGISTER AND CHECK
+    #=============================================
+    - name: Run command and register
+      command: cat /etc/nonexistent
+      register: cat_result
+      ignore_errors: yes
+
+    - name: Check if failed
+      debug:
+        msg: "The command failed"
+      when: cat_result is failed
+
+    - name: Check if succeeded
+      debug:
+        msg: "The command succeeded"
+      when: cat_result is succeeded
+
+    - name: Check if changed
+      debug:
+        msg: "Something changed"
+      when: cat_result is changed
+
+    - name: Check if skipped
+      debug:
+        msg: "Task was skipped"
+      when: cat_result is skipped
+
+    #=============================================
+    # ANY_ERRORS_FATAL
+    #=============================================
+    # - name: Critical task
+    #   hosts: all
+    #   any_errors_fatal: yes
+    #   tasks:
+    #     - name: If this fails, stop everything
+    #       command: critical_command
+
+    #=============================================
+    # MAX_FAIL_PERCENTAGE
+    #=============================================
+    # - name: Tolerant play
+    #   hosts: webservers
+    #   max_fail_percentage: 25
+    #   tasks:
+    #     - name: Allow 25% failure
+    #       command: might_fail
+
+    #=============================================
+    # FORCE HANDLERS
+    #=============================================
+    # force_handlers: yes in play will run handlers
+    # even if play fails
+
+    #=============================================
+    # BLOCK/RESCUE/ALWAYS
+    #=============================================
+    - name: Complete error handling with block
+      block:
+        - name: Task that fails
+          command: /bin/false
+
+      rescue:
+        - name: Error handler
+          debug:
+            msg: "Error caught and handled"
+
+        - name: Set error flag
+          set_fact:
+            deployment_failed: true
+
+      always:
+        - name: Always executed
+          debug:
+            msg: "This always runs"
+
+    #=============================================
+    # ASSERT
+    #=============================================
+    - name: Validate requirements
+      assert:
+        that:
+          - ansible_memtotal_mb >= 500
+          - ansible_processor_vcpus >= 1
+        fail_msg: "System does not meet minimum requirements"
+        success_msg: "System meets all requirements"
+
+    - name: Assert with custom message
+      assert:
+        that:
+          - ansible_distribution in ['CentOS', 'RedHat', 'Ubuntu', 'Debian']
+        msg: "Unsupported OS: {{ ansible_distribution }}"
+
+    #=============================================
+    # FAIL MODULE
+    #=============================================
+    - name: Check prerequisite
+      stat:
+        path: /etc/passwd
+      register: prereq_check
+
+    - name: Fail if prerequisite missing
+      fail:
+        msg: "/etc/passwd is required but missing"
+      when: not prereq_check.stat.exists
+
+    #=============================================
+    # WAIT_FOR
+    #=============================================
+    - name: Wait for port to be available
+      wait_for:
+        port: 22
+        host: localhost
+        timeout: 10
+      ignore_errors: yes
+
+    - name: Wait for file to exist
+      wait_for:
+        path: /tmp/marker
+        state: present
+        timeout: 5
+      ignore_errors: yes
+
+    #=============================================
+    # RETRIES
+    #=============================================
+    - name: Retry until success
+      command: "test {{ 10 | random }} -gt 7"
+      register: retry_result
+      until: retry_result.rc == 0
+      retries: 5
+      delay: 1
+      ignore_errors: yes
+
+    - name: Wait for service to be ready
+      uri:
+        url: http://localhost:80/
+        status_code: 200
+      register: service_result
+      until: service_result.status == 200
+      retries: 10
+      delay: 3
+      ignore_errors: yes
+
+    #=============================================
+    # META: END_PLAY
+    #=============================================
+    - name: Check critical condition
+      set_fact:
+        critical_failure: false
+
+    - name: End play if critical failure
+      meta: end_play
+      when: critical_failure | bool
+
+    - name: This runs if no critical failure
+      debug:
+        msg: "Continuing with play..."

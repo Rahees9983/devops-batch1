@@ -1,0 +1,57 @@
+---
+# EXAMPLE VAULT FILE (Not encrypted - for reference only)
+# In real usage, this file would be encrypted with ansible-vault
+#
+# Create encrypted vault: ansible-vault create vars/vault.yml
+# This example shows what the UNENCRYPTED content looks like
+
+# Database credentials
+vault_db_password: "SuperSecretDBPassword123!"
+vault_db_root_password: "RootPassword456!"
+
+# API Keys
+vault_api_key: "sk-1234567890abcdefghijklmnop"
+vault_api_secret: "secret_abcdef123456"
+
+# AWS Credentials
+vault_aws_access_key: "AKIAIOSFODNN7EXAMPLE"
+vault_aws_secret_key: "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
+
+# SSL/TLS Keys
+vault_ssl_private_key: |
+  -----BEGIN PRIVATE KEY-----
+  MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC7F...
+  (This would be a real private key)
+  -----END PRIVATE KEY-----
+
+vault_ssl_certificate: |
+  -----BEGIN CERTIFICATE-----
+  MIIDXTCCAkWgAwIBAgIJAJC1HiIAZAiUMA0GCSqGSIb3Qq0BAQsF...
+  (This would be a real certificate)
+  -----END CERTIFICATE-----
+
+# SSH Keys
+vault_ssh_private_key: |
+  -----BEGIN OPENSSH PRIVATE KEY-----
+  b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAAB...
+  -----END OPENSSH PRIVATE KEY-----
+
+# Application Secrets
+vault_app_secret_key: "django-insecure-change-me-in-production"
+vault_jwt_secret: "your-256-bit-secret"
+vault_encryption_key: "32-byte-key-for-aes-encryption!!"
+
+# Third-party Service Credentials
+vault_smtp_password: "email_password_123"
+vault_slack_webhook: "https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXX"
+
+# Sudo/Become Passwords
+vault_become_password: "SudoPassword123"
+vault_ansible_password: "SSHPassword456"
+
+# NOTE: To encrypt this file:
+# ansible-vault encrypt vars/vault-example.yml
+#
+# The encrypted file will look like:
+# $ANSIBLE_VAULT;1.1;AES256
+# 61626364656667686970716b6c6d6e6f70717273747576777879...

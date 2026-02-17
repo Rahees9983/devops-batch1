@@ -1,0 +1,27 @@
+# Sample Inventory File for Introduction
+# This demonstrates basic inventory concepts
+
+# Ungrouped hosts
+localhost ansible_connection=local
+
+# Web Servers Group
+[webservers]
+web1 ansible_host=192.168.1.101
+web2 ansible_host=192.168.1.102
+
+# Database Servers Group
+[dbservers]
+db1 ansible_host=192.168.1.201
+
+# Group variables
+[webservers:vars]
+http_port=80
+ansible_user=admin
+
+[dbservers:vars]
+db_port=3306
+ansible_user=dbadmin
+
+# All servers group variables
+[all:vars]
+ansible_python_interpreter=/usr/bin/python3

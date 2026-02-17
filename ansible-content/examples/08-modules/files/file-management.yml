@@ -1,0 +1,277 @@
+---
+# File Management Module Examples
+
+#=============================================
+# FILE MODULE
+#=============================================
+- name: File Module Examples
+  hosts: all
+  become: yes
+
+  tasks:
+    # Create directory
+    - name: Create directory
+      file:
+        path: /opt/myapp
+        state: directory
+        mode: '0755'
+        owner: root
+        group: root
+
+    # Create nested directories
+    - name: Create nested directories
+      file:
+        path: /opt/myapp/logs/archive
+        state: directory
+        mode: '0755'
+        recurse: yes
+
+    # Create empty file
+    - name: Create empty file
+      file:
+        path: /opt/myapp/app.log
+        state: touch
+        mode: '0644'
+
+    # Set file permissions
+    - name: Change file permissions
+      file:
+        path: /opt/myapp/app.log
+        mode: '0640'
+        owner: root
+        group: wheel
+
+    # Create symbolic link
+    - name: Create symbolic link
+      file:
+        src: /opt/myapp
+        dest: /var/www/app
+        state: link
+
+    # Create hard link
+    - name: Create hard link
+      file:
+        src: /opt/myapp/config.yml
+        dest: /etc/app-config.yml
+        state: hard
+      when: false  # Source doesn't exist
+
+    # Delete file
+    - name: Delete file
+      file:
+        path: /tmp/unwanted.txt
+        state: absent
+
+    # Delete directory recursively
+    - name: Delete directory
+      file:
+        path: /tmp/old_cache
+        state: absent
+
+    # Set access time
+    - name: Update file timestamp
+      file:
+        path: /opt/myapp/app.log
+        state: touch
+        modification_time: now
+        access_time: now
+
+#=============================================
+# COPY MODULE
+#=============================================
+- name: Copy Module Examples
+  hosts: all
+  become: yes
+
+  tasks:
+    # Copy file from control node
+    - name: Copy file to remote
+      copy:
+        src: files/app.conf
+        dest: /etc/myapp/app.conf
+        owner: root
+        group: root
+        mode: '0644'
+        backup: yes
+      when: false  # Source file doesn't exist
+
+    # Copy with inline content
+    - name: Create file with content
+      copy:
+        content: |
+          # Application Configuration
+          APP_NAME=myapp
+          APP_PORT=8080
+          DEBUG=false
+          LOG_LEVEL=info
+        dest: /opt/myapp/config.env
+        mode: '0644'
+
+    # Copy directory
+    - name: Copy directory
+      copy:
+        src: files/static/
+        dest: /var/www/html/static/
+        directory_mode: '0755'
+      when: false  # Source doesn't exist
+
+    # Copy with validation
+    - name: Copy nginx config with validation
+      copy:
+        src: files/nginx.conf
+        dest: /etc/nginx/nginx.conf
+        validate: nginx -t -c %s
+        backup: yes
+      when: false  # Source doesn't exist
+
+    # Remote to remote copy
+    - name: Copy file within remote server
+      copy:
+        src: /opt/myapp/config.env
+        dest: /opt/myapp/config.env.backup
+        remote_src: yes
+
+#=============================================
+# LINEINFILE MODULE
+#=============================================
+- name: Lineinfile Module Examples
+  hosts: all
+  become: yes
+
+  tasks:
+    # Ensure line exists
+    - name: Set SELINUX to disabled
+      lineinfile:
+        path: /etc/selinux/config
+        regexp: '^SELINUX='
+        line: 'SELINUX=disabled'
+        state: present
+      when: false  # Don't actually do this
+
+    # Add line if not exists
+    - name: Add configuration line
+      lineinfile:
+        path: /etc/sysctl.conf
+        line: 'net.ipv4.ip_forward = 1'
+        state: present
+      when: false  # Example only
+
+    # Insert after specific line
+    - name: Insert after pattern
+      lineinfile:
+        path: /etc/hosts
+        insertafter: '^127.0.0.1'
+        line: '192.168.1.100 myserver.local'
+
+    # Insert before specific line
+    - name: Insert before pattern
+      lineinfile:
+        path: /etc/hosts
+        insertbefore: '^::1'
+        line: '192.168.1.101 myserver2.local'
+
+    # Remove line
+    - name: Remove line
+      lineinfile:
+        path: /etc/hosts
+        regexp: '^192.168.1.100'
+        state: absent
+
+    # Multiple changes with loop
+    - name: Configure sshd
+      lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: "{{ item.regexp }}"
+        line: "{{ item.line }}"
+      loop:
+        - { regexp: '^#?PermitRootLogin', line: 'PermitRootLogin no' }
+        - { regexp: '^#?PasswordAuthentication', line: 'PasswordAuthentication no' }
+        - { regexp: '^#?X11Forwarding', line: 'X11Forwarding no' }
+      when: false  # Example only
+
+#=============================================
+# BLOCKINFILE MODULE
+#=============================================
+- name: Blockinfile Module Examples
+  hosts: all
+  become: yes
+
+  tasks:
+    # Insert block of text
+    - name: Add SSH configuration block
+      blockinfile:
+        path: /etc/ssh/sshd_config
+        marker: "# {mark} ANSIBLE MANAGED BLOCK - Deployer Config"
+        block: |
+          Match User deployer
+            PasswordAuthentication no
+            PubkeyAuthentication yes
+            AllowTcpForwarding no
+            X11Forwarding no
+      when: false  # Example only
+
+    # Insert block at specific location
+    - name: Add hosts entries
+      blockinfile:
+        path: /etc/hosts
+        marker: "# {mark} ANSIBLE MANAGED - Application Hosts"
+        insertafter: '^127.0.0.1'
+        block: |
+          192.168.1.10 app1.local
+          192.168.1.11 app2.local
+          192.168.1.20 db1.local
+
+    # Remove block
+    - name: Remove managed block
+      blockinfile:
+        path: /etc/hosts
+        marker: "# {mark} ANSIBLE MANAGED - Application Hosts"
+        state: absent
+
+#=============================================
+# FETCH MODULE (Remote to Control)
+#=============================================
+- name: Fetch Module Examples
+  hosts: all
+  become: yes
+
+  tasks:
+    # Fetch file to control node
+    - name: Fetch remote file
+      fetch:
+        src: /var/log/messages
+        dest: /tmp/logs/
+        flat: no  # Creates hostname subdirectory
+      when: false  # Large file
+
+    # Fetch with flat structure
+    - name: Fetch without subdirectory
+      fetch:
+        src: /etc/hostname
+        dest: "/tmp/hostnames/{{ inventory_hostname }}-hostname"
+        flat: yes
+
+#=============================================
+# STAT MODULE
+#=============================================
+- name: Stat Module Examples
+  hosts: all
+
+  tasks:
+    - name: Check if file exists
+      stat:
+        path: /etc/passwd
+      register: passwd_stat
+
+    - name: Display file info
+      debug:
+        msg: |
+          Exists: {{ passwd_stat.stat.exists }}
+          Size: {{ passwd_stat.stat.size | default(0) }}
+          Mode: {{ passwd_stat.stat.mode | default('N/A') }}
+          Owner: {{ passwd_stat.stat.pw_name | default('N/A') }}
+
+    - name: Conditional based on file
+      debug:
+        msg: "File exists and is a regular file"
+      when: passwd_stat.stat.exists and passwd_stat.stat.isreg

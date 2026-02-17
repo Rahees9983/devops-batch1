@@ -1,0 +1,64 @@
+Ansible Introduction
+Core Components
+    Configuration Files
+    Facts
+    Ansible Inventory
+    Inventory formats
+    Grouping and parent-child relationships
+Install and Configure Ansible Control Node
+    Install Required Packages
+    Create a Static Host Inventory File
+    Create a Configuration File
+Configure Ansible Managed Nodes
+    Create and Distribute SSH Keys
+    Configure Privilege Escalation on Managed Nodes
+    Validate using Adhoc Commands
+Create simple shell scripts that run ad hoc Ansible commands
+Privilege Escalation
+ansible_ssh_pass or ansible_password
+
+Ansible Playbook Run Options
+    Check Mode or Dry Run
+    Start at
+    Tags
+Ansible Modules
+    ansible Modules
+    Introduction to Ansible plugins
+    Modules and Olugin index
+    Packages
+    services
+    Filecontent
+    archiving 
+    scheduled Tasks
+    users and groups 
+Variable and Jinja2
+    Ansible Variables
+    Variable Types
+    Variable Precedence
+    Variable scope
+    use Variable to retrieve the results of running commands
+    Variable register
+    magic Variables
+    Jinja2 basics
+    Jinja2 in Ansible
+    Creat and use template to create customized configuration Files
+
+Ansible handlers
+Roles 
+collections
+
+
+Ansible playbooks
+Verify playbooks
+
+Playbook Flow
+    loops
+    use Conditionals to control play execution
+    blocks
+    configure error handling
+    manage parallelism
+include and roles
+    ansible file seperartion 
+    ansible roles 
+ansible vault 
+dynamic Inventory

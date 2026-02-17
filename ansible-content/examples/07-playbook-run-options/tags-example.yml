@@ -1,0 +1,179 @@
+---
+# Tags Example Playbook
+# Demonstrates how to use tags for selective task execution
+
+- name: Web Server Setup with Tags
+  hosts: all
+  become: yes
+
+  vars:
+    app_name: myapp
+    http_port: 80
+
+  tasks:
+    #=============================================
+    # INSTALLATION TASKS
+    #=============================================
+    - name: Install EPEL repository
+      yum:
+        name: epel-release
+        state: present
+      tags:
+        - install
+        - packages
+        - epel
+
+    - name: Install web server packages
+      yum:
+        name:
+          - nginx
+          - php
+          - php-fpm
+        state: present
+      tags:
+        - install
+        - packages
+        - nginx
+
+    - name: Install monitoring tools
+      yum:
+        name:
+          - htop
+          - iotop
+          - nethogs
+        state: present
+      tags:
+        - install
+        - monitoring
+        - never  # Only runs when explicitly tagged
+
+    #=============================================
+    # CONFIGURATION TASKS
+    #=============================================
+    - name: Configure nginx
+      template:
+        src: nginx.conf.j2
+        dest: /etc/nginx/nginx.conf
+      tags:
+        - configure
+        - nginx
+      when: false  # Template doesn't exist
+
+    - name: Configure PHP-FPM
+      template:
+        src: php-fpm.conf.j2
+        dest: /etc/php-fpm.d/www.conf
+      tags:
+        - configure
+        - php
+      when: false  # Template doesn't exist
+
+    - name: Deploy application files
+      copy:
+        content: "<h1>Hello from {{ inventory_hostname }}</h1>"
+        dest: /usr/share/nginx/html/index.html
+      tags:
+        - configure
+        - deploy
+        - app
+
+    #=============================================
+    # SERVICE TASKS
+    #=============================================
+    - name: Start and enable nginx
+      service:
+        name: nginx
+        state: started
+        enabled: yes
+      tags:
+        - service
+        - nginx
+
+    - name: Start and enable PHP-FPM
+      service:
+        name: php-fpm
+        state: started
+        enabled: yes
+      tags:
+        - service
+        - php
+
+    - name: Restart nginx
+      service:
+        name: nginx
+        state: restarted
+      tags:
+        - restart
+        - nginx
+        - never  # Only when explicitly requested
+
+    #=============================================
+    # FIREWALL TASKS
+    #=============================================
+    - name: Configure firewall for HTTP
+      firewalld:
+        service: http
+        permanent: yes
+        state: enabled
+      tags:
+        - firewall
+        - security
+
+    - name: Configure firewall for HTTPS
+      firewalld:
+        service: https
+        permanent: yes
+        state: enabled
+      tags:
+        - firewall
+        - security
+
+    #=============================================
+    # VERIFICATION TASKS
+    #=============================================
+    - name: Verify nginx is running
+      shell: systemctl is-active nginx
+      register: nginx_status
+      changed_when: false
+      tags:
+        - verify
+        - always  # Always runs
+
+    - name: Display nginx status
+      debug:
+        msg: "Nginx status: {{ nginx_status.stdout }}"
+      tags:
+        - verify
+        - always
+
+    #=============================================
+    # CLEANUP TASKS
+    #=============================================
+    - name: Remove temporary files
+      file:
+        path: /tmp/install_cache
+        state: absent
+      tags:
+        - cleanup
+        - never  # Only when explicitly requested
+
+#=============================================
+# Usage Examples:
+#=============================================
+# List all tags:
+#   ansible-playbook tags-example.yml --list-tags
+#
+# Run only install tasks:
+#   ansible-playbook tags-example.yml --tags install
+#
+# Run install and configure:
+#   ansible-playbook tags-example.yml --tags "install,configure"
+#
+# Skip firewall tasks:
+#   ansible-playbook tags-example.yml --skip-tags firewall
+#
+# Run 'never' tagged tasks (like restart):
+#   ansible-playbook tags-example.yml --tags restart
+#
+# Run everything except cleanup:
+#   ansible-playbook tags-example.yml --skip-tags cleanup,never

@@ -1,0 +1,216 @@
+---
+# Package Management Module Examples
+
+#=============================================
+# YUM/DNF MODULE (RHEL-based)
+#=============================================
+- name: YUM/DNF Package Management
+  hosts: all
+  become: yes
+  gather_facts: yes
+  when: ansible_os_family == "RedHat"
+
+  tasks:
+    # Install single package
+    - name: Install nginx
+      yum:
+        name: nginx
+        state: present
+
+    # Install multiple packages
+    - name: Install multiple packages
+      yum:
+        name:
+          - httpd
+          - mod_ssl
+          - php
+          - php-mysql
+        state: present
+
+    # Install specific version
+    - name: Install specific version
+      yum:
+        name: httpd-2.4.6-97.el7
+        state: present
+      when: false  # Example only
+
+    # Install latest version
+    - name: Update package to latest
+      yum:
+        name: nginx
+        state: latest
+
+    # Remove package
+    - name: Remove telnet
+      yum:
+        name: telnet
+        state: absent
+
+    # Update all packages
+    - name: Update all packages
+      yum:
+        name: "*"
+        state: latest
+        exclude: kernel*
+      when: false  # Careful with this!
+
+    # Install from URL
+    - name: Install from URL
+      yum:
+        name: https://example.com/package.rpm
+        state: present
+      when: false  # Example only
+
+    # Install package group
+    - name: Install Development Tools
+      yum:
+        name: "@Development Tools"
+        state: present
+
+    # Enable repository and install
+    - name: Install from specific repo
+      yum:
+        name: package-name
+        enablerepo: epel
+        state: present
+      when: false  # Example only
+
+    # Disable GPG check (not recommended)
+    - name: Install without GPG check
+      yum:
+        name: local-package.rpm
+        disable_gpg_check: yes
+        state: present
+      when: false  # Not recommended
+
+#=============================================
+# APT MODULE (Debian-based)
+#=============================================
+- name: APT Package Management
+  hosts: all
+  become: yes
+  gather_facts: yes
+  when: ansible_os_family == "Debian"
+
+  tasks:
+    # Update cache and install
+    - name: Install nginx with cache update
+      apt:
+        name: nginx
+        state: present
+        update_cache: yes
+        cache_valid_time: 3600  # Cache valid for 1 hour
+
+    # Install multiple packages
+    - name: Install multiple packages
+      apt:
+        pkg:
+          - apache2
+          - php
+          - php-mysql
+          - libapache2-mod-php
+        state: present
+
+    # Install specific version
+    - name: Install specific version
+      apt:
+        name: nginx=1.18.0-0ubuntu1
+        state: present
+      when: false  # Example only
+
+    # Remove package
+    - name: Remove package
+      apt:
+        name: apache2
+        state: absent
+
+    # Remove with config files
+    - name: Purge package
+      apt:
+        name: apache2
+        state: absent
+        purge: yes
+
+    # Autoremove unused dependencies
+    - name: Remove unused dependencies
+      apt:
+        autoremove: yes
+
+    # Add APT key
+    - name: Add Docker GPG key
+      apt_key:
+        url: https://download.docker.com/linux/ubuntu/gpg
+        state: present
+      when: false  # Example only
+
+    # Add repository
+    - name: Add Docker repository
+      apt_repository:
+        repo: "deb https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
+        state: present
+      when: false  # Example only
+
+#=============================================
+# GENERIC PACKAGE MODULE (Cross-platform)
+#=============================================
+- name: Cross-Platform Package Management
+  hosts: all
+  become: yes
+
+  tasks:
+    # Works on any supported OS
+    - name: Install git (any OS)
+      package:
+        name: git
+        state: present
+
+    - name: Install common packages (any OS)
+      package:
+        name:
+          - vim
+          - wget
+          - curl
+        state: present
+
+#=============================================
+# PIP MODULE (Python packages)
+#=============================================
+- name: Python Package Management
+  hosts: all
+  become: yes
+
+  tasks:
+    - name: Ensure pip is installed
+      package:
+        name: python3-pip
+        state: present
+
+    - name: Install Python package
+      pip:
+        name: requests
+        state: present
+
+    - name: Install specific version
+      pip:
+        name: requests==2.28.0
+        state: present
+
+    - name: Install multiple packages
+      pip:
+        name:
+          - requests
+          - boto3
+          - jinja2
+        state: present
+
+    - name: Install from requirements file
+      pip:
+        requirements: /opt/app/requirements.txt
+        state: present
+      when: false  # File doesn't exist
+
+    - name: Install in virtualenv
+      pip:
+        name: flask
+        virtualenv: /opt/app/venv
+        virtualenv_python: python3

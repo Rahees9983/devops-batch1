@@ -1,0 +1,132 @@
+---
+# Ansible Vault Usage Examples
+
+#=============================================
+# USING VAULT VARIABLES
+#=============================================
+- name: Vault Example Playbook
+  hosts: all
+  become: yes
+  gather_facts: yes
+
+  vars:
+    # Plain text variables
+    app_name: myapp
+    app_port: 8080
+
+    # Reference vault variables (defined in vault file)
+    db_password: "{{ vault_db_password }}"
+    api_key: "{{ vault_api_key }}"
+    ssl_private_key: "{{ vault_ssl_private_key }}"
+
+  vars_files:
+    # Include vault file
+    - vars/vault.yml
+
+  tasks:
+    - name: Display non-sensitive info
+      debug:
+        msg: "Configuring {{ app_name }} on port {{ app_port }}"
+
+    - name: Use vault variable (password hidden)
+      debug:
+        msg: "Database configured with password: ********"
+
+    - name: Deploy configuration with secrets
+      copy:
+        content: |
+          # Application Configuration
+          APP_NAME={{ app_name }}
+          APP_PORT={{ app_port }}
+          DB_PASSWORD={{ db_password }}
+          API_KEY={{ api_key }}
+        dest: /opt/myapp/config.env
+        mode: '0600'
+
+    - name: Deploy SSL private key
+      copy:
+        content: "{{ ssl_private_key }}"
+        dest: /etc/ssl/private/app.key
+        mode: '0600'
+        owner: root
+        group: root
+      no_log: true  # Hide output in logs
+      when: false   # Skip for demo
+
+#=============================================
+# INLINE ENCRYPTED VARIABLES
+#=============================================
+- name: Inline Vault Example
+  hosts: all
+  gather_facts: no
+
+  vars:
+    # This is how an encrypted string looks
+    # Generated with: ansible-vault encrypt_string 'mysecret' --name 'inline_secret'
+    inline_secret: !vault |
+      $ANSIBLE_VAULT;1.1;AES256
+      66386466386366633261303265366139663139646530656231336462313162336631
+      3433663135363366363138316439313933353861653530310a636464656339633432
+      30373737373637386166376434356434393631323737323132353564393032353633
+      6366313965633236320a666431663665386432616632396130313632373765616636
+      3432
+
+  tasks:
+    - name: Use inline encrypted variable
+      debug:
+        msg: "Secret value accessed"
+      # The actual value is decrypted at runtime
+
+#=============================================
+# CONDITIONAL VAULT LOADING
+#=============================================
+- name: Environment-Based Vault
+  hosts: all
+  gather_facts: no
+
+  vars:
+    env: "{{ lookup('env', 'DEPLOY_ENV') | default('development') }}"
+
+  tasks:
+    - name: Include environment-specific vault
+      include_vars: "vars/vault-{{ env }}.yml"
+      ignore_errors: yes
+
+#=============================================
+# COMMANDS REFERENCE
+#=============================================
+# Create vault file:
+#   ansible-vault create vars/vault.yml
+#
+# Sample vault.yml contents:
+# ---
+# vault_db_password: "SuperSecret123!"
+# vault_api_key: "sk-1234567890abcdef"
+# vault_ssl_private_key: |
+#   -----BEGIN PRIVATE KEY-----
+#   MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC...
+#   -----END PRIVATE KEY-----
+#
+# Encrypt existing file:
+#   ansible-vault encrypt vars/secrets.yml
+#
+# View encrypted file:
+#   ansible-vault view vars/vault.yml
+#
+# Edit encrypted file:
+#   ansible-vault edit vars/vault.yml
+#
+# Change vault password:
+#   ansible-vault rekey vars/vault.yml
+#
+# Encrypt string:
+#   ansible-vault encrypt_string 'password123' --name 'db_password'
+#
+# Run playbook with vault:
+#   ansible-playbook vault-example.yml --ask-vault-pass
+#   ansible-playbook vault-example.yml --vault-password-file ~/.vault_pass
+#
+# Multiple vault IDs:
+#   ansible-vault create --vault-id dev@prompt vars/dev-vault.yml
+#   ansible-vault create --vault-id prod@~/.prod_pass vars/prod-vault.yml
+#   ansible-playbook playbook.yml --vault-id dev@prompt --vault-id prod@~/.prod_pass

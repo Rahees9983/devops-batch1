@@ -1,0 +1,177 @@
+---
+# Privilege Escalation Examples
+
+#=============================================
+# Play-Level Privilege Escalation
+#=============================================
+- name: Play with global become
+  hosts: all
+  become: yes                    # All tasks run with sudo
+  become_method: sudo
+  become_user: root
+
+  tasks:
+    - name: Install package (requires root)
+      package:
+        name: vim
+        state: present
+
+    - name: Create system directory
+      file:
+        path: /opt/myapp
+        state: directory
+        mode: '0755'
+
+#=============================================
+# Task-Level Privilege Escalation
+#=============================================
+- name: Play with task-level become
+  hosts: all
+  become: no                     # Default: no escalation
+
+  tasks:
+    - name: Check current user (no escalation)
+      command: whoami
+      register: normal_user
+
+    - name: Display normal user
+      debug:
+        msg: "Running as: {{ normal_user.stdout }}"
+
+    - name: Check root user (with escalation)
+      command: whoami
+      become: yes
+      register: root_user
+
+    - name: Display escalated user
+      debug:
+        msg: "Escalated to: {{ root_user.stdout }}"
+
+    - name: Task as specific user
+      command: whoami
+      become: yes
+      become_user: apache
+      register: apache_user
+      ignore_errors: yes
+
+#=============================================
+# Different Become Methods
+#=============================================
+- name: Using different become methods
+  hosts: all
+  gather_facts: no
+
+  tasks:
+    # Using sudo (default)
+    - name: Using sudo method
+      command: id
+      become: yes
+      become_method: sudo
+
+    # Using su (requires root password)
+    - name: Using su method
+      command: id
+      become: yes
+      become_method: su
+      become_user: root
+      when: false  # Disabled by default
+
+#=============================================
+# Become with Specific Users
+#=============================================
+- name: Running as different users
+  hosts: all
+  become: yes
+
+  tasks:
+    - name: Run as root
+      command: whoami
+      become_user: root
+      register: as_root
+
+    - name: Run as nobody user
+      command: whoami
+      become_user: nobody
+      register: as_nobody
+
+    - name: Run command as application user
+      command: whoami
+      become_user: nginx
+      register: as_nginx
+      ignore_errors: yes
+
+    - name: Display results
+      debug:
+        msg: |
+          As root: {{ as_root.stdout }}
+          As nobody: {{ as_nobody.stdout }}
+          As nginx: {{ as_nginx.stdout | default('nginx user not found') }}
+
+#=============================================
+# Privilege Escalation with Blocks
+#=============================================
+- name: Block with common privilege settings
+  hosts: all
+
+  tasks:
+    - name: Tasks requiring root
+      block:
+        - name: Install packages
+          package:
+            name:
+              - httpd
+              - mod_ssl
+            state: present
+
+        - name: Configure service
+          template:
+            src: httpd.conf.j2
+            dest: /etc/httpd/conf/httpd.conf
+          when: false  # Template doesn't exist
+
+        - name: Start service
+          service:
+            name: httpd
+            state: started
+            enabled: yes
+      become: yes
+      become_user: root
+
+    - name: Regular user task
+      debug:
+        msg: "This runs as regular user"
+      become: no
+
+#=============================================
+# Conditional Privilege Escalation
+#=============================================
+- name: Conditional privilege escalation
+  hosts: all
+
+  tasks:
+    - name: Task that may or may not need root
+      file:
+        path: "{{ item.path }}"
+        state: directory
+        mode: "{{ item.mode }}"
+      become: "{{ item.needs_root }}"
+      loop:
+        - { path: '/tmp/user_dir', mode: '0755', needs_root: false }
+        - { path: '/opt/system_dir', mode: '0755', needs_root: true }
+
+#=============================================
+# Become Flags
+#=============================================
+- name: Using become flags
+  hosts: all
+  become: yes
+  become_flags: '-H -S -n'  # Preserve HOME, stdin, non-interactive
+
+  tasks:
+    - name: Check environment
+      shell: echo $HOME
+      register: home_dir
+
+    - name: Show home directory
+      debug:
+        var: home_dir.stdout

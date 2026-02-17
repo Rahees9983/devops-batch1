@@ -1,0 +1,22 @@
+---
+# Web server specific tasks
+
+- name: Install web server
+  package:
+    name: "{{ webserver_package | default('nginx') }}"
+    state: present
+  become: yes
+
+- name: Start web server
+  service:
+    name: "{{ webserver_service | default('nginx') }}"
+    state: started
+    enabled: yes
+  become: yes
+
+- name: Deploy web content
+  copy:
+    content: "<h1>Welcome to {{ inventory_hostname }}</h1>"
+    dest: "{{ document_root | default('/var/www/html') }}/index.html"
+    mode: '0644'
+  become: yes

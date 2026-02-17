@@ -1,0 +1,18 @@
+---
+# Master Playbook (site.yml)
+# Import all component playbooks
+
+# Common configuration for all hosts
+- import_playbook: common.yml
+
+# Web server configuration
+- import_playbook: webservers.yml
+
+# Database server configuration
+- import_playbook: dbservers.yml
+
+# Application deployment
+- import_playbook: app-deploy.yml
+
+# Monitoring setup
+- import_playbook: monitoring.yml

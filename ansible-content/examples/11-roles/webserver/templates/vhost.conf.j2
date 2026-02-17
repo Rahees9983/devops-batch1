@@ -1,0 +1,71 @@
+# Virtual Host: {{ item.name }}
+# Managed by Ansible
+
+server {
+{% if item.ssl | default(false) %}
+    listen 443 ssl http2;
+{% else %}
+    listen {{ item.port | default(80) }};
+{% endif %}
+    server_name {{ item.server_name }}{% if item.server_aliases is defined %} {{ item.server_aliases | join(' ') }}{% endif %};
+
+    root {{ item.document_root | default(webserver_default_document_root) }};
+    index {{ item.index | default('index.html index.htm index.php') }};
+
+    access_log {{ webserver_log_dir }}/{{ item.name }}-access.log;
+    error_log {{ webserver_log_dir }}/{{ item.name }}-error.log;
+
+{% if item.ssl | default(false) %}
+    ssl_certificate {{ item.ssl_certificate }};
+    ssl_certificate_key {{ item.ssl_certificate_key }};
+{% endif %}
+
+{% if item.client_max_body_size is defined %}
+    client_max_body_size {{ item.client_max_body_size }};
+{% endif %}
+
+    location / {
+        try_files $uri $uri/ {{ item.try_files | default('=404') }};
+    }
+
+{% if item.php | default(false) %}
+    location ~ \.php$ {
+        fastcgi_pass {{ item.php_fpm_socket | default('unix:/run/php-fpm/www.sock') }};
+        fastcgi_index index.php;
+        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+        include fastcgi_params;
+    }
+{% endif %}
+
+{% if item.proxy_pass is defined %}
+    location {{ item.proxy_location | default('/') }} {
+        proxy_pass {{ item.proxy_pass }};
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+{% endif %}
+
+{% if item.custom_config is defined %}
+    {{ item.custom_config | indent(4) }}
+{% endif %}
+
+    location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg)$ {
+        expires max;
+        log_not_found off;
+    }
+
+    location ~ /\.ht {
+        deny all;
+    }
+}
+
+{% if item.ssl | default(false) and item.ssl_redirect | default(true) %}
+server {
+    listen 80;
+    server_name {{ item.server_name }}{% if item.server_aliases is defined %} {{ item.server_aliases | join(' ') }}{% endif %};
+    return 301 https://$server_name$request_uri;
+}
+{% endif %}

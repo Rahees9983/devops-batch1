@@ -1,0 +1,27 @@
+---
+# Common tasks to be included/imported
+
+- name: Install common packages
+  package:
+    name: "{{ common_packages | default(['vim', 'wget', 'curl']) }}"
+    state: present
+  become: yes
+
+- name: Create common directories
+  file:
+    path: "{{ item }}"
+    state: directory
+    mode: '0755'
+  loop:
+    - /opt/app
+    - /var/log/app
+
+- name: Deploy common configuration
+  copy:
+    content: |
+      # Common configuration
+      log_level: {{ log_level | default('info') }}
+      environment: {{ environment | default('production') }}
+    dest: /opt/app/common.conf
+    mode: '0644'
+  become: yes

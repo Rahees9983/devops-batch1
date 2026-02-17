@@ -1,0 +1,201 @@
+---
+# Loop Examples
+
+- name: Loop Examples
+  hosts: localhost
+  gather_facts: yes
+
+  vars:
+    packages:
+      - vim
+      - git
+      - curl
+
+    users:
+      - name: john
+        uid: 1001
+        groups: ["wheel", "developers"]
+      - name: jane
+        uid: 1002
+        groups: ["developers"]
+
+    services:
+      nginx: started
+      mysql: stopped
+      redis: started
+
+  tasks:
+    #=============================================
+    # SIMPLE LOOP
+    #=============================================
+    - name: Simple loop
+      debug:
+        msg: "Item: {{ item }}"
+      loop:
+        - one
+        - two
+        - three
+
+    #=============================================
+    # LOOP WITH VARIABLE
+    #=============================================
+    - name: Loop with variable list
+      debug:
+        msg: "Package: {{ item }}"
+      loop: "{{ packages }}"
+
+    #=============================================
+    # LOOP WITH INDEX
+    #=============================================
+    - name: Loop with index
+      debug:
+        msg: "Index {{ my_idx }}: {{ item }}"
+      loop: "{{ packages }}"
+      loop_control:
+        index_var: my_idx
+
+    #=============================================
+    # LOOP WITH LABEL
+    #=============================================
+    - name: Loop with custom label
+      debug:
+        msg: "Processing user {{ item.name }} ({{ item.uid }})"
+      loop: "{{ users }}"
+      loop_control:
+        label: "{{ item.name }}"
+
+    #=============================================
+    # LOOP WITH PAUSE
+    #=============================================
+    - name: Loop with pause between iterations
+      debug:
+        msg: "Processing {{ item }}"
+      loop:
+        - step1
+        - step2
+        - step3
+      loop_control:
+        pause: 1
+
+    #=============================================
+    # LOOP OVER DICTIONARY
+    #=============================================
+    - name: Loop over dictionary
+      debug:
+        msg: "Service {{ item.key }} should be {{ item.value }}"
+      loop: "{{ services | dict2items }}"
+      loop_control:
+        label: "{{ item.key }}"
+
+    #=============================================
+    # NESTED LOOP (with_nested equivalent)
+    #=============================================
+    - name: Nested loop using product filter
+      debug:
+        msg: "User {{ item.0 }} on server {{ item.1 }}"
+      loop: "{{ ['alice', 'bob'] | product(['server1', 'server2']) | list }}"
+
+    #=============================================
+    # LOOP WITH RANGE
+    #=============================================
+    - name: Loop with range
+      debug:
+        msg: "Number: {{ item }}"
+      loop: "{{ range(1, 6) | list }}"
+
+    - name: Loop with range and step
+      debug:
+        msg: "Even number: {{ item }}"
+      loop: "{{ range(0, 10, 2) | list }}"
+
+    #=============================================
+    # LOOP UNTIL (retry)
+    #=============================================
+    - name: Retry until condition met
+      command: "echo {{ 999 | random }}"
+      register: result
+      until: result.stdout | int > 500
+      retries: 10
+      delay: 1
+
+    - name: Show result
+      debug:
+        msg: "Got value > 500: {{ result.stdout }}"
+
+    #=============================================
+    # LOOP WITH CONDITIONAL
+    #=============================================
+    - name: Loop with when condition
+      debug:
+        msg: "Processing admin user: {{ item.name }}"
+      loop: "{{ users }}"
+      when: "'wheel' in item.groups"
+      loop_control:
+        label: "{{ item.name }}"
+
+    #=============================================
+    # LOOP WITH REGISTER
+    #=============================================
+    - name: Loop with register
+      command: "echo {{ item }}"
+      loop:
+        - alpha
+        - beta
+        - gamma
+      register: echo_results
+      changed_when: false
+
+    - name: Display registered loop results
+      debug:
+        msg: "{{ item.stdout }}"
+      loop: "{{ echo_results.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+
+    #=============================================
+    # LOOP OVER FILES
+    #=============================================
+    - name: Loop over files (using fileglob)
+      debug:
+        msg: "Found file: {{ item }}"
+      loop: "{{ lookup('fileglob', '/etc/*.conf', wantlist=True) }}"
+      when: false  # Skip execution
+
+    #=============================================
+    # LOOP WITH SUBELEMENTS
+    #=============================================
+    - name: Loop with subelements
+      debug:
+        msg: "User {{ item.0.name }} is member of {{ item.1 }}"
+      loop: "{{ users | subelements('groups') }}"
+      loop_control:
+        label: "{{ item.0.name }}"
+
+    #=============================================
+    # LOOP OVER INVENTORY
+    #=============================================
+    - name: Loop over inventory groups
+      debug:
+        msg: "Host: {{ item }}"
+      loop: "{{ groups['all'] }}"
+
+    #=============================================
+    # EXTENDED LOOP CONTROL
+    #=============================================
+    - name: Extended loop control
+      debug:
+        msg: |
+          Item: {{ current_item }}
+          Index: {{ current_index }}
+          First: {{ ansible_loop.first }}
+          Last: {{ ansible_loop.last }}
+          Length: {{ ansible_loop.length }}
+          Revindex: {{ ansible_loop.revindex }}
+      loop:
+        - alpha
+        - beta
+        - gamma
+      loop_control:
+        loop_var: current_item
+        index_var: current_index
+        extended: yes

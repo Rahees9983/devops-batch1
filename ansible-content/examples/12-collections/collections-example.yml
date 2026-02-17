@@ -1,0 +1,256 @@
+---
+# Collections Usage Examples
+
+#=============================================
+# USING FQCN (Recommended)
+#=============================================
+- name: Using Fully Qualified Collection Names
+  hosts: all
+  become: yes
+  gather_facts: yes
+
+  tasks:
+    # ansible.builtin modules (core)
+    - name: Install package (ansible.builtin)
+      ansible.builtin.package:
+        name: vim
+        state: present
+
+    - name: Copy file (ansible.builtin)
+      ansible.builtin.copy:
+        content: "Hello World"
+        dest: /tmp/hello.txt
+        mode: '0644'
+
+    - name: Run command (ansible.builtin)
+      ansible.builtin.command: uptime
+      register: uptime_result
+      changed_when: false
+
+    - name: Debug output (ansible.builtin)
+      ansible.builtin.debug:
+        var: uptime_result.stdout
+
+#=============================================
+# USING COLLECTIONS KEYWORD
+#=============================================
+- name: Using Collections Keyword
+  hosts: all
+  become: yes
+
+  collections:
+    - community.general
+    - ansible.posix
+
+  tasks:
+    # No need for FQCN when collection is declared
+    - name: Set timezone
+      timezone:
+        name: UTC
+      ignore_errors: yes
+
+    - name: Set file ACL
+      acl:
+        path: /tmp/hello.txt
+        entity: nobody
+        etype: user
+        permissions: r
+        state: present
+      ignore_errors: yes
+
+#=============================================
+# COMMUNITY.GENERAL EXAMPLES
+#=============================================
+- name: Community General Collection Examples
+  hosts: all
+  become: yes
+
+  tasks:
+    # Filesystem
+    - name: Create filesystem
+      community.general.filesystem:
+        fstype: ext4
+        dev: /dev/sdb1
+      when: false  # Example only
+
+    # LVG
+    - name: Create volume group
+      community.general.lvg:
+        vg: vg_data
+        pvs: /dev/sdb
+      when: false  # Example only
+
+    # Timezone
+    - name: Configure timezone
+      community.general.timezone:
+        name: America/New_York
+      ignore_errors: yes
+
+    # Alternatives
+    - name: Set default editor
+      community.general.alternatives:
+        name: editor
+        path: /usr/bin/vim
+      ignore_errors: yes
+
+    # Hostname
+    - name: Set hostname
+      community.general.hostname:
+        name: webserver01
+      when: false  # Don't change hostname
+
+    # Modprobe
+    - name: Load kernel module
+      community.general.modprobe:
+        name: br_netfilter
+        state: present
+      ignore_errors: yes
+
+    # Sysctl
+    - name: Set kernel parameter
+      community.general.sysctl:
+        name: net.ipv4.ip_forward
+        value: '1'
+        state: present
+        reload: yes
+      when: false  # Example only
+
+    # Pamd
+    - name: Configure PAM
+      community.general.pamd:
+        name: system-auth
+        type: auth
+        control: required
+        module_path: pam_unix.so
+        new_type: auth
+        new_control: required
+        new_module_path: pam_unix.so
+        module_arguments: 'try_first_pass'
+      when: false  # Example only
+
+#=============================================
+# ANSIBLE.POSIX EXAMPLES
+#=============================================
+- name: Ansible POSIX Collection Examples
+  hosts: all
+  become: yes
+
+  tasks:
+    # ACL
+    - name: Set ACL on file
+      ansible.posix.acl:
+        path: /tmp/hello.txt
+        entity: nobody
+        etype: user
+        permissions: rw
+        state: present
+      ignore_errors: yes
+
+    # Authorized Key
+    - name: Add authorized key
+      ansible.posix.authorized_key:
+        user: ansible
+        key: "{{ lookup('file', '~/.ssh/id_rsa.pub') }}"
+        state: present
+      ignore_errors: yes
+
+    # At
+    - name: Schedule one-time job
+      ansible.posix.at:
+        command: /usr/bin/uptime > /tmp/uptime.txt
+        count: 1
+        units: minutes
+      ignore_errors: yes
+
+    # Synchronize
+    - name: Sync directory
+      ansible.posix.synchronize:
+        src: /opt/source/
+        dest: /opt/destination/
+      when: false  # Paths don't exist
+
+    # Seboolean
+    - name: Set SELinux boolean
+      ansible.posix.seboolean:
+        name: httpd_can_network_connect
+        state: yes
+        persistent: yes
+      ignore_errors: yes
+
+    # Selinux
+    - name: Set SELinux mode
+      ansible.posix.selinux:
+        policy: targeted
+        state: enforcing
+      when: false  # Example only
+
+#=============================================
+# COMMUNITY.MYSQL EXAMPLES
+#=============================================
+- name: MySQL Collection Examples
+  hosts: dbservers
+  become: yes
+
+  tasks:
+    - name: Create MySQL database
+      community.mysql.mysql_db:
+        name: myapp
+        state: present
+        login_unix_socket: /var/lib/mysql/mysql.sock
+      when: false  # MySQL not installed
+
+    - name: Create MySQL user
+      community.mysql.mysql_user:
+        name: myapp_user
+        password: secret
+        priv: 'myapp.*:ALL'
+        state: present
+      when: false  # MySQL not installed
+
+#=============================================
+# COMMUNITY.DOCKER EXAMPLES
+#=============================================
+- name: Docker Collection Examples
+  hosts: all
+  become: yes
+
+  tasks:
+    - name: Create Docker network
+      community.docker.docker_network:
+        name: myapp_network
+        state: present
+      when: false  # Docker not installed
+
+    - name: Run Docker container
+      community.docker.docker_container:
+        name: nginx
+        image: nginx:latest
+        state: started
+        ports:
+          - "8080:80"
+      when: false  # Docker not installed
+
+    - name: Build Docker image
+      community.docker.docker_image:
+        name: myapp
+        build:
+          path: /opt/myapp
+        source: build
+      when: false  # Docker not installed
+
+#=============================================
+# REQUIREMENTS FILE
+#=============================================
+# requirements.yml:
+#
+# collections:
+#   - name: community.general
+#     version: ">=7.0.0"
+#   - name: ansible.posix
+#   - name: community.mysql
+#   - name: community.docker
+#   - name: amazon.aws
+#     version: "6.0.0"
+#
+# Install with:
+#   ansible-galaxy collection install -r requirements.yml

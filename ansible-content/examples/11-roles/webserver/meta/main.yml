@@ -1,0 +1,42 @@
+---
+# Role metadata
+
+galaxy_info:
+  author: DevOps Team
+  description: Web server role supporting Nginx and Apache
+  company: Example Company
+
+  license: MIT
+
+  min_ansible_version: "2.9"
+
+  platforms:
+    - name: EL
+      versions:
+        - "8"
+        - "9"
+    - name: Ubuntu
+      versions:
+        - focal
+        - jammy
+    - name: Debian
+      versions:
+        - bullseye
+        - bookworm
+
+  galaxy_tags:
+    - webserver
+    - nginx
+    - apache
+    - httpd
+    - web
+
+# Role dependencies
+dependencies:
+  # - role: common
+  # - role: firewall
+  #   vars:
+  #     firewall_ports:
+  #       - 80
+  #       - 443
+  []

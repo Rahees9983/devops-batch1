@@ -1,0 +1,224 @@
+---
+# Parallelism and Execution Control Examples
+
+#=============================================
+# SERIAL: ROLLING UPDATES
+#=============================================
+- name: Rolling Update (2 hosts at a time)
+  hosts: webservers
+  serial: 2
+  become: yes
+
+  tasks:
+    - name: Disable in load balancer
+      debug:
+        msg: "Disabling {{ inventory_hostname }}"
+
+    - name: Update application
+      debug:
+        msg: "Updating application on {{ inventory_hostname }}"
+
+    - name: Enable in load balancer
+      debug:
+        msg: "Enabling {{ inventory_hostname }}"
+
+#=============================================
+# SERIAL: PERCENTAGE
+#=============================================
+- name: Rolling Update (25% at a time)
+  hosts: webservers
+  serial: "25%"
+
+  tasks:
+    - name: Update batch
+      debug:
+        msg: "Updating {{ inventory_hostname }}"
+
+#=============================================
+# SERIAL: GRADUATED ROLLOUT
+#=============================================
+- name: Graduated Rollout
+  hosts: webservers
+  serial:
+    - 1           # First: 1 host (canary)
+    - 5           # Then: 5 hosts
+    - "25%"       # Then: 25% of remaining
+    - "50%"       # Then: 50% of remaining
+    # Remaining hosts
+
+  tasks:
+    - name: Deploy with graduated rollout
+      debug:
+        msg: "Deploying to {{ inventory_hostname }}"
+
+#=============================================
+# THROTTLE: LIMIT CONCURRENT TASKS
+#=============================================
+- name: Rate Limited Tasks
+  hosts: all
+
+  tasks:
+    - name: API call with rate limit
+      debug:
+        msg: "Calling API from {{ inventory_hostname }}"
+      throttle: 3  # Max 3 concurrent
+
+    - name: Database operation (1 at a time)
+      debug:
+        msg: "DB operation on {{ inventory_hostname }}"
+      throttle: 1
+
+#=============================================
+# FORKS: PARALLEL PROCESSES
+#=============================================
+# Set in ansible.cfg or command line:
+# [defaults]
+# forks = 20
+#
+# Or: ansible-playbook -f 20 playbook.yml
+
+- name: High Parallelism Tasks
+  hosts: all
+  # Uses forks setting from ansible.cfg
+
+  tasks:
+    - name: Parallel task
+      debug:
+        msg: "Running on {{ inventory_hostname }}"
+
+#=============================================
+# RUN_ONCE
+#=============================================
+- name: Tasks That Run Once
+  hosts: webservers
+
+  tasks:
+    - name: Create shared resource (once)
+      debug:
+        msg: "Creating shared resource..."
+      run_once: yes
+
+    - name: Database migration (once)
+      debug:
+        msg: "Running migration..."
+      run_once: yes
+      delegate_to: "{{ groups['dbservers'][0] | default('localhost') }}"
+
+    - name: Regular task (all hosts)
+      debug:
+        msg: "Regular task on {{ inventory_hostname }}"
+
+#=============================================
+# DELEGATE_TO
+#=============================================
+- name: Delegation Examples
+  hosts: webservers
+
+  tasks:
+    - name: Add to load balancer (from LB server)
+      debug:
+        msg: "Adding {{ inventory_hostname }} to LB"
+      delegate_to: localhost
+
+    - name: Run command on control node
+      command: date
+      delegate_to: localhost
+      register: local_date
+      changed_when: false
+
+    - name: Update DNS (external server)
+      debug:
+        msg: "Updating DNS for {{ inventory_hostname }}"
+      delegate_to: dns.example.com
+      when: false  # Host doesn't exist
+
+#=============================================
+# LOCAL_ACTION
+#=============================================
+- name: Local Action Examples
+  hosts: webservers
+
+  tasks:
+    - name: Local action shorthand
+      local_action:
+        module: debug
+        msg: "Running locally for {{ inventory_hostname }}"
+
+    - name: Wait for host to be reachable
+      local_action:
+        module: wait_for
+        host: "{{ inventory_hostname }}"
+        port: 22
+        timeout: 30
+      when: false  # Skip for demo
+
+#=============================================
+# ASYNC: LONG RUNNING TASKS
+#=============================================
+- name: Async Task Examples
+  hosts: all
+
+  tasks:
+    - name: Start long-running task (async)
+      command: sleep 30
+      async: 120        # Max runtime: 120 seconds
+      poll: 0           # Don't wait (fire and forget)
+      register: async_task
+      when: false       # Skip for demo
+
+    - name: Do other work while waiting
+      debug:
+        msg: "Doing other work..."
+
+    - name: Check on async task
+      async_status:
+        jid: "{{ async_task.ansible_job_id }}"
+      register: job_result
+      until: job_result.finished
+      retries: 30
+      delay: 5
+      when: false  # Skip for demo
+
+    - name: Async with polling
+      command: sleep 10
+      async: 60
+      poll: 5     # Check every 5 seconds
+      when: false # Skip for demo
+
+#=============================================
+# ORDER
+#=============================================
+- name: Execution Order Control
+  hosts: webservers
+  order: sorted  # alphabetical
+  # order: inventory (default)
+  # order: reverse_inventory
+  # order: reverse_sorted
+  # order: shuffle
+
+  tasks:
+    - name: Process in order
+      debug:
+        msg: "Processing {{ inventory_hostname }}"
+
+#=============================================
+# STRATEGY
+#=============================================
+# In ansible.cfg:
+# [defaults]
+# strategy = free
+#
+# Or in play:
+- name: Free Strategy
+  hosts: all
+  strategy: free  # Don't wait for other hosts
+
+  tasks:
+    - name: Fast hosts proceed
+      debug:
+        msg: "{{ inventory_hostname }} - running independently"
+
+# Available strategies:
+# - linear (default): all hosts complete task before next
+# - free: hosts run independently
+# - debug: interactive debugger

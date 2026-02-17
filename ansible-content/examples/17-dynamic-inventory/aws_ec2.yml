@@ -1,0 +1,112 @@
+---
+# AWS EC2 Dynamic Inventory Configuration
+# Requires: amazon.aws collection
+# Install: ansible-galaxy collection install amazon.aws
+
+plugin: amazon.aws.aws_ec2
+
+# AWS Authentication (uses AWS credentials chain)
+# Options: profile, aws_access_key, environment variables, IAM role
+# aws_profile: production
+# aws_access_key: "{{ lookup('env', 'AWS_ACCESS_KEY_ID') }}"
+# aws_secret_key: "{{ lookup('env', 'AWS_SECRET_ACCESS_KEY') }}"
+
+# Regions to query
+regions:
+  - us-east-1
+  - us-west-2
+  - eu-west-1
+
+# Filters (EC2 API filters)
+filters:
+  # Only running instances
+  instance-state-name: running
+
+  # Filter by tags
+  # tag:Environment: production
+  # tag:Project: myapp
+
+  # Filter by instance type
+  # instance-type:
+  #   - t3.micro
+  #   - t3.small
+
+# Exclude filters
+# exclude_filters:
+#   - tag:Exclude: true
+
+# Which hosts to include
+# include_filters:
+#   - tag:Managed: ansible
+
+# Include extra EC2 API responses
+include_extra_api_calls: true
+
+# Hostnames configuration (priority order)
+hostnames:
+  - tag:Name
+  - private-ip-address
+  # - dns-name
+  # - public-ip-address
+  # - public-dns-name
+
+# Compose variables from EC2 data
+compose:
+  ansible_host: private_ip_address
+  ansible_user: "'ec2-user' if 'amazon' in image_id else 'ubuntu'"
+  # ansible_ssh_private_key_file: ~/.ssh/{{ tags.Environment }}.pem
+  ec2_instance_id: instance_id
+  ec2_region: placement.region
+
+# Create groups from EC2 attributes
+keyed_groups:
+  # Group by tag values
+  - key: tags.Environment
+    prefix: env
+    separator: "_"
+
+  - key: tags.Role
+    prefix: role
+
+  - key: tags.Application
+    prefix: app
+
+  # Group by availability zone
+  - key: placement.availability_zone
+    prefix: az
+
+  # Group by instance type
+  - key: instance_type
+    prefix: type
+
+  # Group by VPC
+  - key: vpc_id
+    prefix: vpc
+
+  # Group by security groups
+  - key: security_groups | map(attribute='group_name') | list
+    prefix: sg
+
+# Static groups
+groups:
+  # All Linux hosts
+  linux: "'linux' in platform_details | lower"
+
+  # All Windows hosts
+  windows: "'windows' in platform_details | lower"
+
+  # Running instances
+  running: "state.name == 'running'"
+
+# Use cache to improve performance
+cache: true
+cache_plugin: jsonfile
+cache_timeout: 300  # 5 minutes
+cache_connection: /tmp/aws_ec2_inventory_cache
+cache_prefix: aws_ec2
+
+# Strict mode (fail on errors)
+strict: false
+
+# Leading world characters in hostname
+use_contrib_script_compatible_sanitization: true

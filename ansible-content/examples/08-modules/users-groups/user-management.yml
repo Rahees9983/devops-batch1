@@ -1,0 +1,285 @@
+---
+# User and Group Management Module Examples
+
+#=============================================
+# GROUP MODULE
+#=============================================
+- name: Group Management Examples
+  hosts: all
+  become: yes
+
+  tasks:
+    # Create group
+    - name: Create developers group
+      group:
+        name: developers
+        state: present
+
+    # Create group with specific GID
+    - name: Create group with GID
+      group:
+        name: appgroup
+        gid: 2000
+        state: present
+
+    # Create system group
+    - name: Create system group
+      group:
+        name: myapp
+        system: yes
+        state: present
+
+    # Remove group
+    - name: Remove old group
+      group:
+        name: oldgroup
+        state: absent
+
+#=============================================
+# USER MODULE
+#=============================================
+- name: User Management Examples
+  hosts: all
+  become: yes
+
+  tasks:
+    #-----------------------------------------
+    # BASIC USER OPERATIONS
+    #-----------------------------------------
+
+    # Create basic user
+    - name: Create user john
+      user:
+        name: john
+        state: present
+
+    # Create user with full details
+    - name: Create user with details
+      user:
+        name: jane
+        uid: 1500
+        group: developers
+        groups: wheel,docker
+        shell: /bin/bash
+        home: /home/jane
+        create_home: yes
+        comment: "Jane Doe - Developer"
+        state: present
+
+    # Create system user (for services)
+    - name: Create system user
+      user:
+        name: myapp
+        system: yes
+        shell: /sbin/nologin
+        home: /opt/myapp
+        create_home: no
+        state: present
+
+    # Create user with expiry
+    - name: Create temporary user
+      user:
+        name: contractor
+        expires: "{{ (ansible_date_time.epoch | int) + (86400 * 90) }}"  # 90 days
+        state: present
+
+    #-----------------------------------------
+    # PASSWORD MANAGEMENT
+    #-----------------------------------------
+
+    # Set user password
+    - name: Set user password
+      user:
+        name: john
+        password: "{{ 'MySecurePassword123!' | password_hash('sha512') }}"
+        update_password: on_create  # Only set on user creation
+
+    # Force password change on next login
+    - name: Set password with expiry
+      user:
+        name: newuser
+        password: "{{ 'TempPassword123!' | password_hash('sha512') }}"
+      register: user_created
+
+    - name: Force password change
+      command: chage -d 0 newuser
+      when: user_created.changed
+
+    #-----------------------------------------
+    # SSH KEY MANAGEMENT
+    #-----------------------------------------
+
+    # Generate SSH key for user
+    - name: Create user with SSH key
+      user:
+        name: deploy
+        generate_ssh_key: yes
+        ssh_key_bits: 4096
+        ssh_key_type: rsa
+        ssh_key_file: .ssh/id_rsa
+        ssh_key_comment: "deploy@{{ ansible_hostname }}"
+
+    # Add authorized key
+    - name: Add SSH authorized key
+      authorized_key:
+        user: deploy
+        key: "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAACAQ... user@example.com"
+        state: present
+
+    # Add multiple authorized keys
+    - name: Add multiple SSH keys
+      authorized_key:
+        user: deploy
+        key: "{{ item }}"
+        state: present
+      loop:
+        - "ssh-rsa AAAAB3... admin1@example.com"
+        - "ssh-rsa AAAAB3... admin2@example.com"
+      when: false  # Example only
+
+    # Add key from URL
+    - name: Add SSH key from GitHub
+      authorized_key:
+        user: deploy
+        key: "https://github.com/username.keys"
+        state: present
+      when: false  # Example only
+
+    # Add key from file
+    - name: Add SSH key from file
+      authorized_key:
+        user: deploy
+        key: "{{ lookup('file', '~/.ssh/id_rsa.pub') }}"
+        state: present
+
+    # Remove authorized key
+    - name: Remove old SSH key
+      authorized_key:
+        user: deploy
+        key: "ssh-rsa AAAAB3... old-user@example.com"
+        state: absent
+      when: false  # Example only
+
+    #-----------------------------------------
+    # MODIFYING USERS
+    #-----------------------------------------
+
+    # Add user to groups
+    - name: Add user to additional groups
+      user:
+        name: john
+        groups: docker,developers
+        append: yes  # Don't remove from existing groups
+
+    # Change user shell
+    - name: Change user shell
+      user:
+        name: john
+        shell: /bin/zsh
+
+    # Lock user account
+    - name: Lock user account
+      user:
+        name: suspended_user
+        password_lock: yes
+
+    # Unlock user account
+    - name: Unlock user account
+      user:
+        name: suspended_user
+        password_lock: no
+
+    # Change home directory
+    - name: Move user home directory
+      user:
+        name: john
+        home: /data/users/john
+        move_home: yes
+
+    #-----------------------------------------
+    # REMOVING USERS
+    #-----------------------------------------
+
+    # Remove user (keep home)
+    - name: Remove user keeping home
+      user:
+        name: olduser
+        state: absent
+
+    # Remove user and home directory
+    - name: Remove user and home directory
+      user:
+        name: olduser
+        state: absent
+        remove: yes
+
+    # Remove user completely
+    - name: Remove user completely
+      user:
+        name: olduser
+        state: absent
+        remove: yes
+        force: yes  # Remove even if logged in
+
+#=============================================
+# PRACTICAL EXAMPLE: User Provisioning
+#=============================================
+- name: Provision Application Users
+  hosts: all
+  become: yes
+
+  vars:
+    app_users:
+      - name: admin
+        groups: ["wheel", "developers"]
+        ssh_key: "ssh-rsa AAAA... admin@company.com"
+        sudo: yes
+      - name: developer
+        groups: ["developers"]
+        ssh_key: "ssh-rsa AAAA... dev@company.com"
+        sudo: no
+      - name: deployer
+        groups: ["deployers"]
+        ssh_key: "ssh-rsa AAAA... deploy@company.com"
+        sudo: yes
+
+  tasks:
+    - name: Create required groups
+      group:
+        name: "{{ item }}"
+        state: present
+      loop:
+        - developers
+        - deployers
+
+    - name: Create users
+      user:
+        name: "{{ item.name }}"
+        groups: "{{ item.groups }}"
+        shell: /bin/bash
+        create_home: yes
+        state: present
+      loop: "{{ app_users }}"
+      loop_control:
+        label: "{{ item.name }}"
+
+    - name: Set SSH keys
+      authorized_key:
+        user: "{{ item.name }}"
+        key: "{{ item.ssh_key }}"
+        state: present
+      loop: "{{ app_users }}"
+      loop_control:
+        label: "{{ item.name }}"
+      when: item.ssh_key is defined
+
+    - name: Configure sudo access
+      copy:
+        content: "{{ item.name }} ALL=(ALL) NOPASSWD: ALL\n"
+        dest: "/etc/sudoers.d/{{ item.name }}"
+        mode: '0440'
+        validate: 'visudo -cf %s'
+      loop: "{{ app_users }}"
+      when: item.sudo | default(false)
+      loop_control:
+        label: "{{ item.name }}"

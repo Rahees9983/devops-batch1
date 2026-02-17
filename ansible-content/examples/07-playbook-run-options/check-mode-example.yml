@@ -1,0 +1,126 @@
+---
+# Check Mode (Dry Run) Examples
+# Run with: ansible-playbook check-mode-example.yml --check --diff
+
+- name: Check Mode Demonstration
+  hosts: all
+  become: yes
+  gather_facts: yes
+
+  vars:
+    config_file: /tmp/app-config.conf
+    app_user: appuser
+
+  tasks:
+    #=============================================
+    # Normal Tasks - Affected by Check Mode
+    #=============================================
+    - name: Create application directory
+      file:
+        path: /opt/myapp
+        state: directory
+        mode: '0755'
+      # In check mode: Reports what WOULD change
+
+    - name: Deploy configuration file
+      copy:
+        content: |
+          # Application Configuration
+          APP_NAME=myapp
+          APP_PORT=8080
+          DEBUG=false
+        dest: "{{ config_file }}"
+        mode: '0644'
+      # In check mode: Shows diff of what WOULD change
+
+    - name: Create application user
+      user:
+        name: "{{ app_user }}"
+        shell: /bin/bash
+        state: present
+      # In check mode: Reports if user WOULD be created
+
+    #=============================================
+    # Tasks That Always Run (check_mode: no)
+    #=============================================
+    - name: Gather package facts (always runs)
+      package_facts:
+        manager: auto
+      check_mode: no  # Runs even in check mode
+
+    - name: Show installed packages count
+      debug:
+        msg: "Installed packages: {{ ansible_facts.packages | length }}"
+      check_mode: no
+
+    - name: Check if file exists (always runs)
+      stat:
+        path: "{{ config_file }}"
+      register: config_stat
+      check_mode: no
+
+    - name: Display file status
+      debug:
+        msg: "Config file exists: {{ config_stat.stat.exists | default(false) }}"
+      check_mode: no
+
+    #=============================================
+    # Tasks That Skip in Check Mode
+    #=============================================
+    - name: Run database migration
+      command: /opt/myapp/migrate.sh
+      when: not ansible_check_mode  # Skip in check mode
+
+    - name: Dangerous operation - skip in check
+      shell: rm -rf /tmp/cache/*
+      when: not ansible_check_mode
+      args:
+        warn: false
+
+    #=============================================
+    # Using Check Mode Variable
+    #=============================================
+    - name: Display check mode status
+      debug:
+        msg: "Running in CHECK MODE - no changes will be made"
+      when: ansible_check_mode
+
+    - name: Display live mode status
+      debug:
+        msg: "Running in LIVE MODE - changes WILL be applied"
+      when: not ansible_check_mode
+
+    #=============================================
+    # Diff Mode Support
+    #=============================================
+    - name: Update configuration with diff visibility
+      lineinfile:
+        path: "{{ config_file }}"
+        regexp: '^DEBUG='
+        line: 'DEBUG=true'
+      # With --diff flag, shows before/after
+
+    - name: Add new configuration line
+      lineinfile:
+        path: "{{ config_file }}"
+        line: 'LOG_LEVEL=info'
+        insertafter: '^DEBUG='
+      # With --diff flag, shows the addition
+
+#=============================================
+# Usage Examples:
+#=============================================
+# Dry run (check mode):
+#   ansible-playbook check-mode-example.yml --check
+#
+# Check mode with diff output:
+#   ansible-playbook check-mode-example.yml --check --diff
+#
+# Check mode with verbose:
+#   ansible-playbook check-mode-example.yml --check --diff -v
+#
+# Normal execution:
+#   ansible-playbook check-mode-example.yml
+#
+# Normal execution with diff:
+#   ansible-playbook check-mode-example.yml --diff

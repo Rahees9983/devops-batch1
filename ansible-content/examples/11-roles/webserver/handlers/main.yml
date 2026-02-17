@@ -1,0 +1,28 @@
+---
+# Handlers for webserver role
+
+- name: Start webserver
+  service:
+    name: "{{ webserver_service_name }}"
+    state: started
+    enabled: yes
+
+- name: Stop webserver
+  service:
+    name: "{{ webserver_service_name }}"
+    state: stopped
+
+- name: Restart webserver
+  service:
+    name: "{{ webserver_service_name }}"
+    state: restarted
+
+- name: Reload webserver
+  service:
+    name: "{{ webserver_service_name }}"
+    state: reloaded
+
+- name: Validate webserver config
+  command: "{{ webserver_config_validate }}"
+  changed_when: false
+  when: webserver_config_validate is defined

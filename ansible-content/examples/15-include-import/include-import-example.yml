@@ -1,0 +1,200 @@
+---
+# Include and Import Examples
+
+#=============================================
+# IMPORT_TASKS (Static)
+#=============================================
+- name: Import Tasks Example
+  hosts: all
+  become: yes
+
+  vars:
+    common_packages:
+      - vim
+      - git
+
+  tasks:
+    # Static import - processed at parse time
+    - import_tasks: tasks/common.yml
+
+    # Import with variables
+    - import_tasks: tasks/webserver.yml
+      vars:
+        webserver_package: nginx
+        document_root: /var/www/html
+
+    # Import with tags (tags apply to all imported tasks)
+    - import_tasks: tasks/common.yml
+      tags:
+        - common
+        - setup
+
+#=============================================
+# INCLUDE_TASKS (Dynamic)
+#=============================================
+- name: Include Tasks Example
+  hosts: all
+  become: yes
+
+  vars:
+    setup_phases:
+      - common
+      - webserver
+
+  tasks:
+    # Dynamic include
+    - include_tasks: tasks/common.yml
+
+    # Conditional include
+    - include_tasks: tasks/webserver.yml
+      when: "'webservers' in group_names"
+
+    # Include with loop
+    - include_tasks: "tasks/{{ item }}.yml"
+      loop: "{{ setup_phases }}"
+
+    # Include based on OS
+    - include_tasks: "tasks/{{ ansible_os_family | lower }}.yml"
+      ignore_errors: yes
+
+#=============================================
+# INCLUDE_VARS
+#=============================================
+- name: Include Variables Example
+  hosts: all
+  gather_facts: yes
+
+  tasks:
+    # Basic include_vars
+    - include_vars: vars/common.yml
+      ignore_errors: yes
+
+    # Include based on OS
+    - include_vars: "vars/{{ ansible_os_family | lower }}.yml"
+      ignore_errors: yes
+
+    # Include with name parameter
+    - include_vars:
+        file: vars/secrets.yml
+        name: secrets
+      ignore_errors: yes
+
+    # Include all files in directory
+    - include_vars:
+        dir: vars/
+        extensions:
+          - yml
+          - yaml
+      ignore_errors: yes
+
+    # Include first found
+    - include_vars: "{{ item }}"
+      with_first_found:
+        - "vars/{{ ansible_distribution }}.yml"
+        - "vars/{{ ansible_os_family }}.yml"
+        - vars/default.yml
+      ignore_errors: yes
+
+#=============================================
+# IMPORT_ROLE / INCLUDE_ROLE
+#=============================================
+- name: Role Inclusion Example
+  hosts: all
+  become: yes
+
+  tasks:
+    # Static role import
+    - import_role:
+        name: webserver
+      vars:
+        http_port: 80
+      when: false  # Role doesn't exist
+
+    # Dynamic role include
+    - include_role:
+        name: webserver
+      vars:
+        http_port: 8080
+      when: false  # Role doesn't exist
+
+    # Include specific tasks from role
+    - include_role:
+        name: database
+        tasks_from: backup.yml
+      when: false  # Role doesn't exist
+
+    # Include role with loop
+    - include_role:
+        name: "{{ item }}"
+      loop:
+        - common
+        - security
+      when: false  # Roles don't exist
+
+    # Conditional role
+    - include_role:
+        name: monitoring
+      when:
+        - enable_monitoring | default(false)
+        - false  # Role doesn't exist
+
+#=============================================
+# PRACTICAL EXAMPLE: Multi-Environment
+#=============================================
+- name: Multi-Environment Deployment
+  hosts: all
+  gather_facts: yes
+
+  vars:
+    app_env: "{{ lookup('env', 'APP_ENV') | default('development') }}"
+
+  tasks:
+    # Load base configuration
+    - include_vars: vars/base.yml
+      ignore_errors: yes
+
+    # Load environment-specific configuration
+    - include_vars: "vars/{{ app_env }}.yml"
+      ignore_errors: yes
+
+    # Load OS-specific configuration
+    - include_vars: "vars/os/{{ ansible_os_family | lower }}.yml"
+      ignore_errors: yes
+
+    # Run common tasks
+    - import_tasks: tasks/common.yml
+
+    # Run environment-specific tasks
+    - include_tasks: "tasks/{{ app_env }}.yml"
+      ignore_errors: yes
+
+#=============================================
+# HANDLERS WITH INCLUDE
+#=============================================
+- name: Handlers Include Example
+  hosts: all
+  become: yes
+
+  tasks:
+    - name: Update configuration
+      copy:
+        content: "updated"
+        dest: /tmp/config.txt
+      notify: Restart services
+
+  handlers:
+    # Include handlers from file
+    # - include_tasks: handlers/main.yml
+    - name: Restart services
+      debug:
+        msg: "Services restarted"
+
+---
+#=============================================
+# IMPORT_PLAYBOOK (site.yml example)
+#=============================================
+# This would be in a separate file (site.yml)
+# - import_playbook: playbooks/common.yml
+# - import_playbook: playbooks/webservers.yml
+# - import_playbook: playbooks/dbservers.yml
+# - import_playbook: playbooks/monitoring.yml

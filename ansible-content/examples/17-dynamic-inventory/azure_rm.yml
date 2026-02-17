@@ -1,0 +1,85 @@
+---
+# Azure Dynamic Inventory Configuration
+# Requires: azure.azcollection collection
+# Install: ansible-galaxy collection install azure.azcollection
+
+plugin: azure.azcollection.azure_rm
+
+# Authentication
+# Options: auto, cli, credential_file, msi, env
+auth_source: auto
+
+# Or explicit credentials
+# subscription_id: "{{ lookup('env', 'AZURE_SUBSCRIPTION_ID') }}"
+# client_id: "{{ lookup('env', 'AZURE_CLIENT_ID') }}"
+# secret: "{{ lookup('env', 'AZURE_SECRET') }}"
+# tenant: "{{ lookup('env', 'AZURE_TENANT') }}"
+
+# Resource groups to include
+include_vm_resource_groups:
+  - production-rg
+  - staging-rg
+  - development-rg
+
+# Or exclude specific resource groups
+# exclude_host_filters:
+#   - resource_group == 'testing-rg'
+
+# Conditional filters
+conditional_groups:
+  # Create group based on tags
+  webservers: "'webserver' in tags.Role | default('')"
+  dbservers: "'database' in tags.Role | default('')"
+  production: "'prod' in tags.Environment | default('')"
+
+# Create groups from attributes
+keyed_groups:
+  # Group by location
+  - key: location
+    prefix: azure_region
+
+  # Group by resource group
+  - key: resource_group
+    prefix: rg
+
+  # Group by tags
+  - key: tags.Environment | default('untagged')
+    prefix: env
+
+  - key: tags.Application | default('unknown')
+    prefix: app
+
+  # Group by OS type
+  - key: os_profile.system | default('linux')
+    prefix: os
+
+  # Group by VM size
+  - key: vm_size
+    prefix: size
+
+# Hostnames
+hostnames:
+  - name
+  - public_ipv4_addresses | first | default(private_ipv4_addresses | first, true)
+
+# Compose variables
+compose:
+  ansible_host: public_ipv4_addresses | first | default(private_ipv4_addresses | first, true)
+  ansible_user: tags.ansible_user | default('azureuser')
+  azure_vm_size: vm_size
+  azure_location: location
+  azure_resource_group: resource_group
+
+# Include extra data
+# include_vm_scalesets: true
+# include_vm_extensions: true
+
+# Plain host names
+plain_host_names: true
+
+# Cache settings
+cache: true
+cache_plugin: jsonfile
+cache_timeout: 300
+cache_connection: /tmp/azure_rm_inventory_cache
+cache_prefix: azure_rm

@@ -1,0 +1,234 @@
+---
+# Block Examples
+
+- name: Block Examples
+  hosts: all
+  become: yes
+  gather_facts: yes
+
+  vars:
+    app_name: myapp
+    enable_feature: true
+
+  tasks:
+    #=============================================
+    # BASIC BLOCK
+    #=============================================
+    - name: Basic block - Group related tasks
+      block:
+        - name: Create directory
+          file:
+            path: /opt/myapp
+            state: directory
+            mode: '0755'
+
+        - name: Deploy config file
+          copy:
+            content: "app_name={{ app_name }}"
+            dest: /opt/myapp/config.txt
+            mode: '0644'
+
+        - name: Set permissions
+          file:
+            path: /opt/myapp
+            owner: root
+            group: root
+            recurse: yes
+
+    #=============================================
+    # BLOCK WITH COMMON ATTRIBUTES
+    #=============================================
+    - name: Block with common become settings
+      block:
+        - name: Install package
+          package:
+            name: vim
+            state: present
+
+        - name: Create user
+          user:
+            name: appuser
+            state: present
+      become: yes
+      become_user: root
+      when: ansible_os_family == "RedHat"
+
+    #=============================================
+    # BLOCK WITH RESCUE (Error Handling)
+    #=============================================
+    - name: Block with error handling
+      block:
+        - name: Attempt risky operation
+          command: /bin/false
+          register: result
+
+        - name: This won't run if above fails
+          debug:
+            msg: "Previous command succeeded"
+
+      rescue:
+        - name: Handle the error
+          debug:
+            msg: "An error occurred! Running recovery tasks..."
+
+        - name: Log the error
+          copy:
+            content: "Error at {{ ansible_date_time.iso8601 }}"
+            dest: /tmp/error.log
+            mode: '0644'
+
+        - name: Send notification (simulated)
+          debug:
+            msg: "Alert: Error in {{ app_name }} deployment"
+
+      always:
+        - name: Always run this (cleanup)
+          debug:
+            msg: "Cleanup tasks running..."
+
+        - name: Remove temporary files
+          file:
+            path: /tmp/ansible_temp
+            state: absent
+
+    #=============================================
+    # NESTED BLOCKS
+    #=============================================
+    - name: Nested blocks
+      block:
+        - name: Outer block task
+          debug:
+            msg: "Outer block"
+
+        - name: Inner block
+          block:
+            - name: Inner task 1
+              debug:
+                msg: "Inner block task 1"
+
+            - name: Inner task 2
+              debug:
+                msg: "Inner block task 2"
+
+          rescue:
+            - name: Inner rescue
+              debug:
+                msg: "Inner block rescue"
+
+      rescue:
+        - name: Outer rescue
+          debug:
+            msg: "Outer block rescue"
+
+    #=============================================
+    # BLOCK WITH CONDITIONAL
+    #=============================================
+    - name: Conditional block
+      block:
+        - name: Feature-specific task 1
+          debug:
+            msg: "Feature task 1"
+
+        - name: Feature-specific task 2
+          debug:
+            msg: "Feature task 2"
+
+        - name: Feature-specific task 3
+          debug:
+            msg: "Feature task 3"
+      when: enable_feature | bool
+
+    #=============================================
+    # BLOCK WITH TAGS
+    #=============================================
+    - name: Tagged block
+      block:
+        - name: Deploy task 1
+          debug:
+            msg: "Deploy step 1"
+
+        - name: Deploy task 2
+          debug:
+            msg: "Deploy step 2"
+      tags:
+        - deploy
+        - app
+
+    #=============================================
+    # BLOCK WITH LOOP
+    #=============================================
+    - name: Block cannot directly loop, use include instead
+      include_tasks: "{{ item }}"
+      loop:
+        - tasks/task1.yml
+        - tasks/task2.yml
+      when: false  # Files don't exist
+
+    #=============================================
+    # PRACTICAL EXAMPLE: Rolling Deployment
+    #=============================================
+    - name: Rolling deployment with error handling
+      block:
+        - name: Disable in load balancer
+          debug:
+            msg: "Disabling {{ inventory_hostname }} in LB"
+
+        - name: Stop application
+          debug:
+            msg: "Stopping application..."
+          # service:
+          #   name: myapp
+          #   state: stopped
+
+        - name: Deploy new version
+          debug:
+            msg: "Deploying new version..."
+          # copy:
+          #   src: app/
+          #   dest: /opt/myapp/
+
+        - name: Run database migrations
+          debug:
+            msg: "Running migrations..."
+          # command: /opt/myapp/bin/migrate
+
+        - name: Start application
+          debug:
+            msg: "Starting application..."
+          # service:
+          #   name: myapp
+          #   state: started
+
+        - name: Health check
+          debug:
+            msg: "Checking health..."
+          # uri:
+          #   url: http://localhost:8080/health
+          #   status_code: 200
+
+      rescue:
+        - name: Deployment failed - rolling back
+          debug:
+            msg: "ROLLBACK: Deployment failed on {{ inventory_hostname }}"
+
+        - name: Restore previous version
+          debug:
+            msg: "Restoring previous version..."
+
+        - name: Start application with old version
+          debug:
+            msg: "Starting old version..."
+
+        - name: Fail the play to stop rolling deployment
+          fail:
+            msg: "Deployment failed on {{ inventory_hostname }}, stopping rollout"
+          when: false  # Don't actually fail
+
+      always:
+        - name: Re-enable in load balancer
+          debug:
+            msg: "Re-enabling {{ inventory_hostname }} in LB"
+
+        - name: Send deployment notification
+          debug:
+            msg: "Deployment notification sent"

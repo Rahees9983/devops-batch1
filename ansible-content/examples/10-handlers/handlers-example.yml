@@ -1,0 +1,295 @@
+---
+# Handler Examples
+
+#=============================================
+# BASIC HANDLER USAGE
+#=============================================
+- name: Basic Handler Example
+  hosts: all
+  become: yes
+
+  tasks:
+    - name: Install nginx
+      package:
+        name: nginx
+        state: present
+      notify: Start nginx
+
+    - name: Deploy nginx configuration
+      copy:
+        content: |
+          worker_processes auto;
+          events { worker_connections 1024; }
+          http { include /etc/nginx/conf.d/*.conf; }
+        dest: /etc/nginx/nginx.conf
+        mode: '0644'
+      notify: Reload nginx
+
+    - name: Deploy site configuration
+      copy:
+        content: |
+          server {
+              listen 80;
+              server_name localhost;
+              root /var/www/html;
+          }
+        dest: /etc/nginx/conf.d/default.conf
+        mode: '0644'
+      notify: Reload nginx
+
+  handlers:
+    - name: Start nginx
+      service:
+        name: nginx
+        state: started
+        enabled: yes
+
+    - name: Reload nginx
+      service:
+        name: nginx
+        state: reloaded
+
+#=============================================
+# MULTIPLE HANDLERS
+#=============================================
+- name: Multiple Handlers Example
+  hosts: all
+  become: yes
+
+  tasks:
+    - name: Update SSL certificate
+      copy:
+        content: "CERTIFICATE CONTENT"
+        dest: /etc/ssl/certs/app.crt
+        mode: '0644'
+      notify:
+        - Reload nginx
+        - Reload apache
+        - Notify admin
+
+    - name: Update application config
+      template:
+        src: app.conf.j2
+        dest: /etc/myapp/config.yml
+      when: false  # Template doesn't exist
+      notify:
+        - Restart application
+        - Clear cache
+
+  handlers:
+    - name: Reload nginx
+      service:
+        name: nginx
+        state: reloaded
+      ignore_errors: yes
+
+    - name: Reload apache
+      service:
+        name: httpd
+        state: reloaded
+      ignore_errors: yes
+
+    - name: Restart application
+      service:
+        name: myapp
+        state: restarted
+
+    - name: Clear cache
+      file:
+        path: /var/cache/myapp
+        state: absent
+
+    - name: Notify admin
+      debug:
+        msg: "SSL certificate was updated!"
+
+#=============================================
+# LISTEN DIRECTIVE (Handler Groups)
+#=============================================
+- name: Listen Directive Example
+  hosts: all
+  become: yes
+
+  tasks:
+    - name: Update database configuration
+      copy:
+        content: "[database]\nhost=localhost"
+        dest: /etc/myapp/database.ini
+        mode: '0644'
+      notify: Restart all services
+
+    - name: Update API configuration
+      copy:
+        content: "[api]\nport=8080"
+        dest: /etc/myapp/api.ini
+        mode: '0644'
+      notify: Restart all services
+
+  handlers:
+    # Multiple handlers respond to same notification
+    - name: Restart web server
+      debug:
+        msg: "Restarting web server..."
+      listen: Restart all services
+
+    - name: Restart application
+      debug:
+        msg: "Restarting application..."
+      listen: Restart all services
+
+    - name: Restart workers
+      debug:
+        msg: "Restarting workers..."
+      listen: Restart all services
+
+    - name: Clear application cache
+      debug:
+        msg: "Clearing cache..."
+      listen: Restart all services
+
+#=============================================
+# FLUSH HANDLERS
+#=============================================
+- name: Flush Handlers Example
+  hosts: all
+  become: yes
+
+  tasks:
+    - name: Deploy new application version
+      copy:
+        content: "APP VERSION 2.0"
+        dest: /opt/myapp/version.txt
+        mode: '0644'
+      notify: Restart application
+
+    # Force handlers to run NOW before continuing
+    - name: Flush handlers
+      meta: flush_handlers
+
+    # This task runs AFTER the handler
+    - name: Verify application is running
+      debug:
+        msg: "Application restart completed, now verifying..."
+
+    - name: Check application health
+      uri:
+        url: http://localhost:8080/health
+        status_code: 200
+      ignore_errors: yes
+
+  handlers:
+    - name: Restart application
+      debug:
+        msg: "Application restarted!"
+
+#=============================================
+# FORCE HANDLERS ON FAILURE
+#=============================================
+- name: Force Handlers Example
+  hosts: all
+  become: yes
+  force_handlers: yes  # Run handlers even if play fails
+
+  tasks:
+    - name: Update configuration
+      copy:
+        content: "NEW CONFIG"
+        dest: /etc/myapp/config.txt
+        mode: '0644'
+      notify: Restart service
+
+    - name: This task might fail
+      command: /bin/false
+      ignore_errors: no  # Will fail
+      when: false  # Disabled for demo
+
+    - name: Another task
+      debug:
+        msg: "This won't run if previous fails"
+
+  handlers:
+    # This WILL run even if play fails (due to force_handlers: yes)
+    - name: Restart service
+      debug:
+        msg: "Service restarted (handler ran despite failure)"
+
+#=============================================
+# HANDLER WITH WHEN CONDITION
+#=============================================
+- name: Conditional Handlers
+  hosts: all
+  become: yes
+
+  vars:
+    enable_restart: true
+    service_type: nginx
+
+  tasks:
+    - name: Update config
+      copy:
+        content: "UPDATED"
+        dest: /tmp/config.txt
+        mode: '0644'
+      notify: Maybe restart service
+
+  handlers:
+    - name: Maybe restart service
+      debug:
+        msg: "Restarting {{ service_type }}..."
+      when: enable_restart | bool
+
+#=============================================
+# CHAINED HANDLERS
+#=============================================
+- name: Chained Handlers Example
+  hosts: all
+
+  tasks:
+    - name: Deploy application
+      debug:
+        msg: "Deploying..."
+      notify: Validate deployment
+      changed_when: true
+
+  handlers:
+    - name: Validate deployment
+      debug:
+        msg: "Validating deployment..."
+      notify: Run smoke tests
+
+    - name: Run smoke tests
+      debug:
+        msg: "Running smoke tests..."
+      notify: Notify deployment complete
+
+    - name: Notify deployment complete
+      debug:
+        msg: "Deployment completed successfully!"
+
+#=============================================
+# HANDLER IMPORT
+#=============================================
+# handlers/main.yml would contain:
+# - name: Restart nginx
+#   service:
+#     name: nginx
+#     state: restarted
+#
+# - name: Reload nginx
+#   service:
+#     name: nginx
+#     state: reloaded
+
+- name: Import Handlers Example
+  hosts: all
+  become: yes
+
+  # Import handlers from file
+  # handlers:
+  #   - import_tasks: handlers/main.yml
+
+  tasks:
+    - name: Task that notifies imported handler
+      debug:
+        msg: "This would notify imported handler"
+      # notify: Restart nginx
